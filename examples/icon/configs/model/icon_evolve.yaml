@@ -1,0 +1,10 @@
+defaults:
+  - icon
+  - _self_
+
+_target_: src.models.icon.icon_evolve.ICONEvolve
+
+transformer:
+  _target_: src.models.base.transformer_evolve.TransformerEncoderEvolve
+  layer:
+    _target_: src.models.base.transformer_evolve.TransformerEncoderLayerEvolve

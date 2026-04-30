@@ -1,0 +1,6 @@
+# @package _global_
+
+prompt:
+  rollout:
+    budget:
+      _target_: scaling_evolve.algorithms.eve.rollout_prompts.default.BudgetPrompt

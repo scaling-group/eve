@@ -1,0 +1,38 @@
+# @package _global_
+# Codex tmux driver tuned for ICON research runs.
+#
+# Notes:
+# - reasoning_effort is xhigh across every role — a research search should
+#   burn reasoning, not rollout turns.
+# - web_search is live because ICON PE work can be literature anchored and
+#   agents may need to look things up.
+# - budget_prompt is disabled and rollout_max_turns is raised to a value
+#   that no realistic research rollout will reach, so the model is never
+#   nudged by synthetic `[Budget] N/M turns remaining` hints during a
+#   heavyweight experiment.
+# - sandbox_mode stays danger-full-access because solver/optimizer need
+#   SSH + rsync + qsub to talk to remote cluster. danger-full-access is explicit
+#   here so nothing can silently downgrade it.
+# - no `eval` override: ICON evaluation is remote cluster shell-script based
+#   (evaluate.sh), so the eval role driver is not normally exercised
+#   in this flow. Anything that does touch it inherits the xhigh root.
+# - pane pool size is left unset on purpose so the driver defaults to the
+#   active worker count (`n_workers_phase2`) instead of silently drifting.
+
+driver:
+  provider: codex_tmux
+  executable: codex
+  model: gpt-5.4
+  reasoning_effort: xhigh
+  rollout_max_turns: 10000
+  budget_prompt: false
+  open_iterm2: true
+  web_search: live
+  approval_policy: never
+  sandbox_mode: danger-full-access
+  timeout_seconds: 7200
+  overrides:
+    solver:
+      reasoning_effort: xhigh
+    optimizer:
+      reasoning_effort: xhigh

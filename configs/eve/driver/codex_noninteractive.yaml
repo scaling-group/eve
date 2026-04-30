@@ -1,0 +1,19 @@
+# @package _global_
+# Codex non-interactive (subprocess) driver (gpt-5.4-mini)
+
+driver:
+  driver: codex_exec
+  executable: codex
+  model: gpt-5.4-mini
+  reasoning_effort: medium
+  rollout_max_turns: 20
+  web_search: disabled
+  timeout_seconds: 900
+  overrides:
+    solver:
+      reasoning_effort: medium
+    eval:
+      model: gpt-5.4-mini
+      reasoning_effort: low
+    optimizer:
+      reasoning_effort: medium

@@ -1,0 +1,23 @@
+# @package _global_
+# Codex tmux driver (gpt-5.4 full, for heavier tasks)
+
+driver:
+  provider: codex_tmux
+  executable: codex
+  model: gpt-5.4
+  reasoning_effort: medium
+  rollout_max_turns: 100
+  pool_size: 2
+  open_iterm2: true
+  web_search: disabled
+  approval_policy: never
+  sandbox_mode: danger-full-access
+  timeout_seconds: 3600
+  overrides:
+    solver:
+      reasoning_effort: high
+    eval:
+      model: gpt-5.4
+      reasoning_effort: low
+    optimizer:
+      reasoning_effort: high

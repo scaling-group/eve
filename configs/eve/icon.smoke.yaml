@@ -1,0 +1,29 @@
+# Run: uv run python -m scaling_evolve.algorithms.eve.runner --config-name=icon.smoke
+
+defaults:
+  - icon
+  - _self_
+
+label: icon-pe-demo-smoke
+
+loop:
+  max_iterations: 2
+  n_workers_phase2: 2
+
+driver:
+  reasoning_effort: medium
+  rollout_max_turns: 50
+  overrides:
+    solver:
+      reasoning_effort: medium
+    optimizer:
+      reasoning_effort: medium
+
+logger:
+  enabled: false
+
+application:
+  evaluation_steps:
+    - configs/eve/application/icon/evaluate_short.sh
+  seed_solver_score: null
+  seed_solver_skip_evaluation: false

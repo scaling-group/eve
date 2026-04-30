@@ -1,0 +1,7 @@
+# @package _global_
+
+prompt:
+  phase4_entrypoint:
+    _target_: scaling_evolve.algorithms.eve.instructions.default.Phase4EntrypointInstruction
+    file_list:
+      - configs/eve/prompt/templates/built_in/phase4_entrypoint.md

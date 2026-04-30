@@ -1,0 +1,14 @@
+# @package _global_
+
+label: ""
+run_timestamp: ${now:%Y%m%d_%H%M%S_%f}
+run_id: ${eve_run_id:${run_timestamp},${label}}
+run_root: ${oc.env:PWD}/.runs/eve/${application.name}/${run_id}
+
+hydra:
+  run:
+    dir: ${run_root}
+  job_logging:
+    handlers:
+      file:
+        filename: ${hydra.runtime.output_dir}/runner.log

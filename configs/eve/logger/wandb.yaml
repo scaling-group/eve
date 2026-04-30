@@ -1,0 +1,10 @@
+# @package _group_
+# WandB logger — enabled
+
+_target_: scaling_evolve.algorithms.eve.logger.WandbEveLogger
+enabled: true
+project: eve
+# Set to your wandb entity (organization or username).
+entity: null
+excluded_score_fields:
+  - info

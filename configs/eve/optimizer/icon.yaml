@@ -1,0 +1,10 @@
+# @package _global_
+# ICON PE demo optimizer definition
+
+optimizer:
+  initial_optimizer: configs/eve/optimizer/icon/initial_optimizer
+  evaluation:
+    _target_: scaling_evolve.algorithms.eve.populations.evaluators.elo.ScalarEloEvaluator
+    k_factor: 32.0
+    initial_score:
+      elo: 1500.0

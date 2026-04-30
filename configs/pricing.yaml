@@ -1,0 +1,28 @@
+# Token pricing lookup table.
+# Update this file when provider pricing changes.
+# Keys should align with driver model names where possible.
+
+haiku:
+  input_per_million: 1.0
+  output_per_million: 5.0
+  cache_read_per_million: 0.1
+
+sonnet:
+  input_per_million: 3.0
+  output_per_million: 15.0
+  cache_read_per_million: 0.3
+
+opus:
+  input_per_million: 15.0
+  output_per_million: 75.0
+  cache_read_per_million: 1.5
+
+gpt-5.4-mini:
+  input_per_million: 0.75
+  output_per_million: 4.5
+  cache_read_per_million: 0.075
+
+gpt-5.4:
+  input_per_million: 2.5
+  output_per_million: 15.0
+  cache_read_per_million: 0.25

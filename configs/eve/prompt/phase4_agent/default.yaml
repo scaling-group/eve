@@ -1,0 +1,7 @@
+# @package _global_
+
+prompt:
+  phase4_agent:
+    _target_: scaling_evolve.algorithms.eve.instructions.default.Phase4AgentInstruction
+    file_list:
+      - configs/eve/prompt/templates/built_in/workspace_agent.md

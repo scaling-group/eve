@@ -1,0 +1,24 @@
+# @package _global_
+# Circle packing application definition
+
+application:
+  name: evolve-testbed
+  github_url: https://github.com/scaling-group/evolve-testbed
+  commit: 6ac22c440e241b7e19d89fff91cc4f9841cc951d
+  editable:
+    files:
+      - candidate.py
+    folders: []
+  check_agent:
+    claude: configs/eve/application/circle_packing/check_claude.md
+    codex: configs/eve/application/circle_packing/check_codex.toml
+  evaluation_steps:
+    - configs/eve/application/circle_packing/evaluation.sh
+  evaluation_failure_score:
+    score: 0.0
+    summary: evaluation failed
+  boundary_failure_score:
+    score: 0.0
+    summary: boundary check failed
+  seed_solver_score: null
+  seed_solver_skip_evaluation: false

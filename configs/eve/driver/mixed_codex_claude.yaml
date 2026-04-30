@@ -1,0 +1,27 @@
+# @package _global_
+# Mixed driver: Codex for solver/eval, Claude for optimizer
+
+driver:
+  provider: codex_tmux
+  executable: codex
+  model: gpt-5.4-mini
+  reasoning_effort: medium
+  rollout_max_turns: 20
+  pool_size: 2
+  open_iterm2: true
+  web_search: disabled
+  approval_policy: never
+  sandbox_mode: workspace-write
+  timeout_seconds: 1200
+  overrides:
+    solver:
+      reasoning_effort: medium
+    eval:
+      model: gpt-5.4-mini
+      reasoning_effort: low
+    optimizer:
+      provider: claude_code_tmux
+      executable: claude
+      model: sonnet
+      effort_level: medium
+      dangerously_skip_permissions: true

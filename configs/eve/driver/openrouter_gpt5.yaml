@@ -1,0 +1,15 @@
+# @package _global_
+# Raw OpenRouter driver (non-Codex, gpt-5.4)
+
+driver:
+  provider: openrouter
+  model: openai/gpt-5.4
+  openrouter_provider_pin: OpenAI
+  permission_mode: bypassPermissions
+  isolate_config: false
+  rollout_max_turns: 100
+  timeout_seconds: 3600
+  policy_profile: open_agent
+  allow_python_bash: true
+  auto_compact_pct: 80
+  max_thinking_tokens: 0

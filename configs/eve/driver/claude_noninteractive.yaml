@@ -1,0 +1,20 @@
+# @package _global_
+# Claude Code non-interactive (subprocess) driver
+
+driver:
+  driver: claude_code
+  executable: claude
+  model: haiku
+  effort_level: medium
+  web_search: disabled
+  setting_sources: [project, local]
+  rollout_max_turns: 20
+  timeout_seconds: 900
+  overrides:
+    solver:
+      effort_level: medium
+    eval:
+      model: haiku
+      effort_level: low
+    optimizer:
+      effort_level: medium

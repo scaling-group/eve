@@ -1,0 +1,81 @@
+# @package _global_
+# Default Eve parameters
+
+loop:
+  max_iterations: 25
+  n_workers_phase2: 2
+  n_workers_phase4: 0 # disabled phase4 as we use phase2-only
+  n_solver_examples_phase2: 4
+  n_optimizer_examples_phase2: 4 # See `_build_worker_optimizer_examples`.
+  n_optimizer_examples_phase4: 2
+  n_logs_per_example_phase4: 8
+  produce_optimizer_in_phase2: ${loop.n_workers_phase2}
+  boundary_repair_attempts: 3
+  enable_iter_snapshots: true
+  iter_snapshot_retain: 3
+  sampling:
+    # Phase 2 worker optimizers. Sample from the full optimizer population,
+    # ranked by each optimizer entry's own score (typically Elo).
+    phase1_optimizer_population:
+      _target_: scaling_evolve.algorithms.eve.populations.samplers.rank_softmax.RankSoftmaxSampler
+      temperature: 1.0
+      replacement_mode: auto
+    # Phase 2 solver reference examples. Sample from the full solver population,
+    # ranked by each solver entry's score.score.
+    phase1_solver_population:
+      _target_: scaling_evolve.algorithms.eve.populations.samplers.rank_softmax.RankExponentialSumSampler
+      features:
+        score:
+          weight: 1.0
+          temperature: 1.0
+      replacement_mode: no_replacement
+    # Phase 2 prefill solver. Sample one solver from the sampled Phase 2 solver
+    # examples uniformly; no score ranking is used.
+    solver_workspace_prefill:
+      _target_: scaling_evolve.algorithms.eve.populations.samplers.uniform.UniformSampler
+      replacement_mode: no_replacement
+    # Phase 2 shared optimizer examples. Sample from the optimizer population
+    # excluding the worker-selected optimizers for this iteration, ranked by each
+    # optimizer entry's own score (typically Elo).
+    phase2_optimizer_examples:
+      _target_: scaling_evolve.algorithms.eve.populations.samplers.rank_softmax.RankSoftmaxSampler
+      temperature: 1.0
+      replacement_mode: no_replacement
+    # Phase 2 produced optimizers kept this iteration. Sample from the set of
+    # newly produced optimizer candidates in this iteration, ranked by the
+    # corresponding produced solver's score.score.
+    phase2_produced_optimizers:
+      _target_: scaling_evolve.algorithms.eve.populations.samplers.rank_softmax.RankExponentialSumSampler
+      features:
+        score:
+          weight: 1.0
+          temperature: 1.0
+      replacement_mode: no_replacement
+    # Phase 4 lead optimizers. Sample from the full optimizer population,
+    # ranked by each optimizer entry's own score (typically Elo).
+    phase4_lead_optimizer:
+      _target_: scaling_evolve.algorithms.eve.populations.samplers.rank_softmax.RankSoftmaxSampler
+      temperature: 1.0
+      replacement_mode: no_replacement
+    # Phase 4 optimizer reference examples. Sample from the full optimizer
+    # population, ranked by each optimizer entry's own score (typically Elo).
+    phase4_optimizer_examples:
+      _target_: scaling_evolve.algorithms.eve.populations.samplers.rank_softmax.RankSoftmaxSampler
+      temperature: 1.0
+      replacement_mode: no_replacement
+    # Phase 4 prefill optimizer. Sample one optimizer uniformly from the
+    # already sampled Phase 4 optimizer examples; no score ranking is used.
+    optimizer_workspace_prefill:
+      _target_: scaling_evolve.algorithms.eve.populations.samplers.uniform.UniformSampler
+      replacement_mode: no_replacement
+    # Phase 4 solver history logs for each sampled optimizer example. Sample
+    # from that optimizer's stored solver-task logs, ranked by each task's
+    # score.score from its score.yaml.
+    optimizer_history_logs:
+      _target_: scaling_evolve.algorithms.eve.populations.samplers.rank_softmax.RankSoftmaxSampler
+      temperature: 1.0
+      replacement_mode: no_replacement
+  workspace_root: ${run_root}
+  artifact_root: ${loop.workspace_root}/artifacts
+  solver_db_path: ${loop.workspace_root}/solver_lineage.db
+  optimizer_db_path: ${loop.workspace_root}/optimizer_lineage.db

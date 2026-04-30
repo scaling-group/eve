@@ -1,0 +1,9 @@
+# @package _global_
+
+prompt:
+  phase2_readme:
+    _target_: scaling_evolve.algorithms.eve.instructions.default.Phase2ReadmeInstruction
+    file_list:
+      - configs/eve/prompt/templates/built_in/design_doc.md
+      - configs/eve/prompt/templates/built_in/phase2_self_optimize_readme.md
+      - configs/eve/prompt/templates/built_in/phase2_score_semantics.md

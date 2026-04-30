@@ -1,0 +1,21 @@
+# @package _global_
+
+defaults:
+  - override /model: icon_evolve
+  - override /accelerate: bf16_mixed
+  - _self_
+
+tags: ["icon", "evolve", "pe", "weno"]
+
+trainer:
+  max_steps: 10000
+
+data:
+  train:
+    weno_cubic:
+      dataset:
+        _target_: src.datasets.weno.weno_lazy.WenoDatasetLazy
+  valid:
+    weno_cubic:
+      dataset:
+        _target_: src.datasets.weno.weno_lazy.WenoDatasetLazy

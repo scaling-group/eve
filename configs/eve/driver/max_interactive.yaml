@@ -1,0 +1,26 @@
+# @package _global_
+# Work-recommended interactive driver: codex tmux + stable gpt-5.4 + xhigh reasoning.
+# All behavior-relevant fields declared explicitly — no reliance on defaults.
+# Companion: max.yaml (same config but via codex exec non-interactive).
+
+driver:
+  provider: codex_tmux
+  executable: codex
+  model: gpt-5.4
+  reasoning_effort: xhigh
+  rollout_max_turns: 10000
+  budget_prompt: false
+  pool_size: 2
+  open_iterm2: true
+  web_search: live
+  approval_policy: never
+  sandbox_mode: danger-full-access
+  timeout_seconds: 3600
+  overrides:
+    solver:
+      reasoning_effort: xhigh
+    eval:
+      model: gpt-5.4
+      reasoning_effort: xhigh
+    optimizer:
+      reasoning_effort: xhigh

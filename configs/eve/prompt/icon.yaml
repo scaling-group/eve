@@ -1,0 +1,31 @@
+# @package _global_
+# ICON-specific Eve prompt parameters.
+
+defaults:
+  - default
+  - _self_
+
+prompt:
+  phase2_readme:
+    _target_: scaling_evolve.algorithms.eve.instructions.icon.Phase2ReadmeInstruction
+    file_list:
+      - configs/eve/prompt/templates/built_in/design_doc.md
+      - configs/eve/prompt/templates/icon/phase2_self_optimize_readme.md
+      - configs/eve/prompt/templates/built_in/phase2_score_semantics.md
+      - configs/eve/prompt/templates/icon/phase2_very_important.md
+  phase2_entrypoint:
+    _target_: scaling_evolve.algorithms.eve.instructions.icon.Phase2EntrypointInstruction
+    file_list:
+      - configs/eve/prompt/templates/built_in/phase2_entrypoint.md
+      - configs/eve/prompt/templates/icon/phase2_very_important.md
+  phase4_readme:
+    _target_: scaling_evolve.algorithms.eve.instructions.icon.Phase4ReadmeInstruction
+    file_list:
+      - configs/eve/prompt/templates/built_in/design_doc.md
+      - configs/eve/prompt/templates/icon/phase4_readme.md
+      - configs/eve/prompt/templates/built_in/phase4_score_semantics.md
+      - configs/eve/prompt/templates/built_in/skills_doc.md
+  phase4_entrypoint:
+    _target_: scaling_evolve.algorithms.eve.instructions.icon.Phase4EntrypointInstruction
+    file_list:
+      - configs/eve/prompt/templates/built_in/phase4_entrypoint.md

@@ -1,0 +1,23 @@
+# @package _global_
+# Codex tmux driver (gpt-5.4-mini)
+
+driver:
+  provider: codex_tmux
+  executable: codex
+  model: gpt-5.4-mini
+  reasoning_effort: medium
+  rollout_max_turns: 20
+  pool_size: 2
+  open_iterm2: true
+  web_search: disabled
+  approval_policy: never
+  sandbox_mode: workspace-write
+  timeout_seconds: 1200
+  overrides:
+    solver:
+      reasoning_effort: medium
+    eval:
+      model: gpt-5.4-mini
+      reasoning_effort: low
+    optimizer:
+      reasoning_effort: medium

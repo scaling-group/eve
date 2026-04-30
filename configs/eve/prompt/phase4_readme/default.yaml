@@ -1,0 +1,10 @@
+# @package _global_
+
+prompt:
+  phase4_readme:
+    _target_: scaling_evolve.algorithms.eve.instructions.default.Phase4ReadmeInstruction
+    file_list:
+      - configs/eve/prompt/templates/built_in/design_doc.md
+      - configs/eve/prompt/templates/built_in/phase4_readme.md
+      - configs/eve/prompt/templates/built_in/phase4_score_semantics.md
+      - configs/eve/prompt/templates/built_in/skills_doc.md

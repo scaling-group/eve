@@ -1,0 +1,6 @@
+# @package _global_
+# Eve: enable multiple loggers at once
+
+defaults:
+  - /logger@logger.csv: csv
+  - /logger@logger.wandb: wandb

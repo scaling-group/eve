@@ -1,0 +1,23 @@
+# @package _global_
+# Claude Code tmux driver
+
+driver:
+  driver: claude_code_tmux
+  executable: claude
+  model: haiku
+  effort_level: medium
+  web_search: disabled
+  setting_sources: [project, local]
+  rollout_max_turns: 20
+  pool_size: 2
+  open_iterm2: true
+  timeout_seconds: 1200
+  dangerously_skip_permissions: true
+  overrides:
+    solver:
+      effort_level: medium
+    eval:
+      model: haiku
+      effort_level: low
+    optimizer:
+      effort_level: medium

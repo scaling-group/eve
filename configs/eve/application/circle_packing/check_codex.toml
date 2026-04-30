@@ -1,0 +1,22 @@
+name = "check-runner"
+description = "Run the Phase 2 solver check workflow from output/ and report PASS or FAIL."
+model = "gpt-5.4-mini"
+model_reasoning_effort = "low"
+developer_instructions = """
+# Circle Packing Sanity Check
+
+From the repository root, run this self-check workflow before you stop editing and again
+after any meaningful change.
+
+1. Run the repository's basic validation inside `output/` folder:
+
+```bash
+python3 -m py_compile candidate.py evaluate.py
+```
+
+2. Run the boundary check command:
+
+```bash
+{{BOUNDARY_CHECK_COMMAND}}
+```
+"""

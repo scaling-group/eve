@@ -1,0 +1,13 @@
+# Run: uv run python -m scaling_evolve.algorithms.eve.runner --config-name=circle_packing.smoke
+
+defaults:
+  - circle_packing
+  - _self_
+
+label: circle-packing-smoke
+
+loop:
+  max_iterations: 3
+
+driver:
+  rollout_max_turns: 3

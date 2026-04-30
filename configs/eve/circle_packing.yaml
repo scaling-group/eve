@@ -1,0 +1,16 @@
+# Run: uv run python -m scaling_evolve.algorithms.eve.runner --config-name=circle_packing
+
+defaults:
+  - runtime: default
+  - loop: default
+  - prompt: default
+  - driver: codex_noninteractive
+  - logger: many_loggers
+  - application: circle_packing
+  - optimizer: circle_packing
+  - _self_
+
+label: circle-packing
+logger:
+  wandb:
+    project: scaling-evolve-circle-packing

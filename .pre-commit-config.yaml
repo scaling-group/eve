@@ -1,0 +1,9 @@
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.15.6
+    hooks:
+      - id: ruff-format
+      - id: ruff-check
+        args: ["--fix"]
+
+  # quality-guards removed in Spec 3.7 — core boundary check is now a pytest test

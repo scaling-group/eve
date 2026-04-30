@@ -1,0 +1,29 @@
+# Run: uv run python -m scaling_evolve.algorithms.eve.runner --config-name=icon
+
+defaults:
+  - runtime: default
+  - loop: default
+  - prompt: icon
+  - driver: codex_tmux_icon
+  - logger: wandb
+  - application: icon
+  - optimizer: icon
+  - _self_
+
+label: icon-pe-demo
+
+loop:
+  max_iterations: 15
+  n_workers_phase2: 2
+  n_solver_examples_phase2: 8
+
+driver:
+  reasoning_effort: medium
+  overrides:
+    solver:
+      reasoning_effort: medium
+    optimizer:
+      reasoning_effort: medium
+
+logger:
+  project: eve-icon

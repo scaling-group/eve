@@ -1,0 +1,34 @@
+.venv/
+.pytest_cache/
+.ruff_cache/
+.pyright/
+dist/
+build/
+*.egg-info/
+.coverage
+htmlcov/
+__pycache__/
+*.py[cod]
+runs/
+/.runs
+artifacts/
+/storage/
+.tmp/
+.env
+.env.*
+!.env.example
+.experiment-claude-config/
+.claude-driver-transcripts/
+*.o*
+/wandb/
+
+probes/
+
+# Superpowers specs/plans (not for public git history)
+docs/superpowers/
+
+# Stream-json probe fixtures (large JSONL, local testing only)
+tests/fixtures/stream_json_probes/
+
+**/.DS_Store
+.vscode/

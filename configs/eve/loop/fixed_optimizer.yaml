@@ -1,0 +1,19 @@
+# @package _global_
+# Ablation: fixed optimizer.
+#
+# Disables every path that would let the optimizer population grow:
+# produce_optimizer_in_phase2 is set to 0 so Phase 2 workers do not
+# co-produce optimizer candidates, and n_optimizer_examples_phase2 is 0
+# so no optimizer examples are shown.
+#
+# Net effect: the optimizer population permanently contains only the seed
+# optimizer, so every Phase 2 solver worker is always guided by that same
+# fixed optimizer across all iterations.
+
+defaults:
+  - default
+  - _self_
+
+loop:
+  produce_optimizer_in_phase2: 0
+  n_optimizer_examples_phase2: 0

@@ -1,0 +1,34 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+      - run: uv sync --group dev --locked
+      - run: uv run ruff format --check .
+      - run: uv run ruff check .
+
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+      - run: uv sync --group dev --locked
+      - run: uv run python -c "from scaling_evolve.algorithms.eve import Eve, EveFactory; print('Eve import OK')"
+      - run: uv run python -c "from scaling_evolve.algorithms.eve.runner import run; print('Eve runner import OK')"
+      - run: uv run python -m scaling_evolve.algorithms.eve.runner --config-name=circle_packing.smoke --cfg job >/dev/null
+      - run: uv run pytest tests/test_repo_task_problem.py tests/test_eve_runner.py -q

@@ -1,0 +1,10 @@
+# Run:
+#   uv run python -m scaling_evolve.algorithms.eve.runner \
+#     --config-name=icon.resume \
+#     "restore_from=/absolute/path/to/previous/run"
+
+defaults:
+  - icon
+  - _self_
+
+restore_from: ???
