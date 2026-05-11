@@ -15,7 +15,6 @@ driver:
       requires_openai_auth: false
   reasoning_effort: medium
   rollout_max_turns: 20
-  pool_size: 2
   open_iterm2: true
   web_search: disabled
   approval_policy: never

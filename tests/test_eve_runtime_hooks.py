@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from scaling_evolve.algorithms.eve.workspace import runtime_hooks
 from scaling_evolve.algorithms.eve.workspace.runtime_hooks import (
     install_workspace_runtime_hooks,
 )
@@ -46,7 +47,12 @@ def test_install_workspace_runtime_hooks_writes_claude_settings(tmp_path: Path) 
     assert settings_payload["hooks"]["PostToolUse"][0]["hooks"][0]["type"] == "command"
 
 
-def test_install_workspace_runtime_hooks_writes_codex_hooks(tmp_path: Path) -> None:
+def test_install_workspace_runtime_hooks_writes_codex_hooks(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(
+        runtime_hooks,
+        "repo_codex_hooks_path",
+        lambda: tmp_path / "repo" / ".codex" / "hooks.json",
+    )
     workspace = tmp_path / "workspace"
     driver = CodexExecSessionDriver(run_root=tmp_path / "run-root", rollout_max_turns=12)
     prompt_specs = [
@@ -76,6 +82,23 @@ def test_install_workspace_runtime_hooks_writes_codex_hooks(tmp_path: Path) -> N
     assert hooks_payload["hooks"]["SessionStart"][0]["hooks"][0]["type"] == "command"
     assert hooks_payload["hooks"]["UserPromptSubmit"][0]["hooks"][0]["type"] == "command"
     assert hooks_payload["hooks"]["PostToolUse"][0]["hooks"][0]["type"] == "command"
+
+
+def test_install_workspace_runtime_hooks_skips_codex_hooks_when_repo_hooks_exist(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    repo_hooks_path = tmp_path / "repo" / ".codex" / "hooks.json"
+    repo_hooks_path.parent.mkdir(parents=True)
+    repo_hooks_path.write_text("{}\n", encoding="utf-8")
+    monkeypatch.setattr(runtime_hooks, "repo_codex_hooks_path", lambda: repo_hooks_path)
+    workspace = tmp_path / "workspace"
+    driver = CodexExecSessionDriver(run_root=tmp_path / "run-root", rollout_max_turns=12)
+
+    install_workspace_runtime_hooks(workspace, driver=driver, prompt_specs=[])
+
+    assert (workspace / ".hooks" / "rollout_prompts.json").exists()
+    assert not (workspace / ".codex" / "hooks.json").exists()
 
 
 def test_install_workspace_runtime_hooks_omits_budget_prompt_when_disabled(tmp_path: Path) -> None:

@@ -8,12 +8,16 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from scaling_evolve.providers.agent.codex_hooks import render_trusted_hook_state_toml
+
 
 @dataclass(frozen=True)
 class CodexLaunchConfig:
     """Minimal launch configuration required for Codex trust bootstrap."""
 
     worktree_root: Path
+    hooks_json_path: Path | None = None
+    trusted_project_roots: tuple[Path, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -185,13 +189,33 @@ def extract_usage(session_jsonl: Path, *, from_line: int = 0) -> dict[str, int]:
 
 
 def _render_config_toml(launch: CodexLaunchConfig) -> str:
-    worktree = str(launch.worktree_root.resolve())
-    return (
-        "[features]\n"
-        "codex_hooks = true\n\n"
-        f"[projects.{json.dumps(worktree)}]\n"
-        'trust_level = "trusted"\n'
+    trusted_projects = _trusted_project_roots(launch)
+    config_text = "[features]\nhooks = true\n\n" + "\n".join(
+        f'[projects.{json.dumps(str(project_root))}]\ntrust_level = "trusted"\n'
+        for project_root in trusted_projects
     )
+    trust_state = render_trusted_hook_state_toml(launch.hooks_json_path)
+    if trust_state:
+        config_text = f"{config_text}\n{trust_state}"
+    return config_text
+
+
+def _trusted_project_roots(launch: CodexLaunchConfig) -> tuple[Path, ...]:
+    roots: list[Path] = [launch.worktree_root.resolve()]
+    roots.extend(root.resolve() for root in launch.trusted_project_roots)
+    if launch.hooks_json_path is not None:
+        hooks_path = launch.hooks_json_path.expanduser().resolve()
+        if hooks_path.parent.name == ".codex":
+            roots.append(hooks_path.parent.parent.resolve())
+    deduped: list[Path] = []
+    seen: set[str] = set()
+    for root in roots:
+        key = str(root)
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(root)
+    return tuple(deduped)
 
 
 def _prune_home(home: IsolatedCodexHome) -> None:

@@ -9,7 +9,6 @@ driver:
   web_search: disabled
   setting_sources: [project, local]
   rollout_max_turns: 20
-  pool_size: 2
   open_iterm2: true
   timeout_seconds: 1200
   dangerously_skip_permissions: true
