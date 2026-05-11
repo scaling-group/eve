@@ -20,13 +20,13 @@
 <a href="#overview">Overview</a> &middot; <a href="#supported-agents">Supported Agents</a> &middot; <a href="#how-it-works">How It Works</a> &middot; <a href="#quick-start">Quick Start</a> &middot; <a href="#example-icon-context-length-generalization">Example</a> &middot; <a href="#citation">Citation</a>
 </p>
 
-<p align="center"><b>Unlimited agents, one shared codebase, fully autonomous.</b></p>
+<p align="center"><b>Unlimited agents, fully autonomous.</b></p>
 
 <p align="center">
   <img src=".github/assets/eve-demo.gif" width="720">
 </p>
 <p align="center">
-  <sub>Each tmux pane is an independent Codex agent editing, evaluating, and evolving solutions to circle packing as a demo.</sub>
+  <sub>Each tmux pane is an independent coding agent editing, evaluating, and evolving solutions.</sub>
 </p>
 
 ## Overview
