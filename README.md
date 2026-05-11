@@ -23,7 +23,7 @@
 <p align="center"><b>Unlimited agents, one shared codebase, fully autonomous.</b></p>
 
 <p align="center">
-  <video src="https://github.com/scaling-group/eve/raw/main/.github/assets/eve-demo.mp4" width="720" autoplay loop muted></video>
+  <img src=".github/assets/eve-demo.gif" width="720">
 </p>
 <p align="center">
   <sub>Each tmux pane is an independent Codex agent editing, evaluating, and evolving solutions to circle packing as a demo.</sub>
