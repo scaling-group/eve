@@ -102,6 +102,8 @@ def test_runner_closes_drivers_when_logger_instantiate_fails(monkeypatch, tmp_pa
     cfg = _make_cfg(run_root, logger_cfg={"_target_": "fake.logger.Target"})
 
     monkeypatch.setattr(runner_module, "load_dotenv", lambda: None)
+    monkeypatch.setattr(runner_module, "write_repo_codex_hooks", lambda repo_root: None)
+    monkeypatch.setattr(runner_module, "ensure_codex_hooks_trusted", lambda repo_root: None)
     monkeypatch.setattr(
         runner_module.RepoTaskProblem,
         "from_config",
@@ -162,6 +164,8 @@ def test_runner_instantiates_logger_non_recursively(monkeypatch, tmp_path: Path)
     cfg = _make_cfg(run_root, logger_cfg={"_target_": "fake.logger.Target", "enabled": False})
 
     monkeypatch.setattr(runner_module, "load_dotenv", lambda: None)
+    monkeypatch.setattr(runner_module, "write_repo_codex_hooks", lambda repo_root: None)
+    monkeypatch.setattr(runner_module, "ensure_codex_hooks_trusted", lambda repo_root: None)
     monkeypatch.setattr(
         runner_module.RepoTaskProblem,
         "from_config",
@@ -226,6 +230,8 @@ def test_runner_skips_finish_when_logger_group_returns_none(monkeypatch, tmp_pat
     cfg = _make_cfg(run_root, logger_cfg={"enabled": False})
 
     monkeypatch.setattr(runner_module, "load_dotenv", lambda: None)
+    monkeypatch.setattr(runner_module, "write_repo_codex_hooks", lambda repo_root: None)
+    monkeypatch.setattr(runner_module, "ensure_codex_hooks_trusted", lambda repo_root: None)
     monkeypatch.setattr(
         runner_module.RepoTaskProblem,
         "from_config",
@@ -288,6 +294,8 @@ def test_runner_logs_and_exits_on_remote_transport_halt(
     cfg = _make_cfg(run_root, logger_cfg={"enabled": False})
 
     monkeypatch.setattr(runner_module, "load_dotenv", lambda: None)
+    monkeypatch.setattr(runner_module, "write_repo_codex_hooks", lambda repo_root: None)
+    monkeypatch.setattr(runner_module, "ensure_codex_hooks_trusted", lambda repo_root: None)
     monkeypatch.setattr(
         runner_module.RepoTaskProblem,
         "from_config",
@@ -361,6 +369,8 @@ def test_runner_skips_optimizer_seed_when_restoring_from_prior_run(
     factory = _FakeFactory()
 
     monkeypatch.setattr(runner_module, "load_dotenv", lambda: None)
+    monkeypatch.setattr(runner_module, "write_repo_codex_hooks", lambda repo_root: None)
+    monkeypatch.setattr(runner_module, "ensure_codex_hooks_trusted", lambda repo_root: None)
     monkeypatch.setattr(
         runner_module.RepoTaskProblem,
         "from_config",

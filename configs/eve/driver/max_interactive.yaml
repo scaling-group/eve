@@ -10,7 +10,6 @@ driver:
   reasoning_effort: xhigh
   rollout_max_turns: 10000
   budget_prompt: false
-  pool_size: 2
   open_iterm2: true
   web_search: live
   approval_policy: never

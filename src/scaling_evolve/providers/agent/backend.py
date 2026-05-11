@@ -27,6 +27,11 @@ from scaling_evolve.core.mutation import (
     ProjectedState,
 )
 from scaling_evolve.core.storage.models import ArtifactRef, MaterializationRef
+from scaling_evolve.providers.agent.codex_hooks import (
+    repo_codex_hooks_path,
+    workspace_hook_command,
+    write_codex_hooks_file,
+)
 from scaling_evolve.providers.agent.compaction import compact_metadata_from_transcript
 from scaling_evolve.providers.agent.config import AgentProviderConfig
 from scaling_evolve.providers.agent.drivers.base import (
@@ -438,7 +443,7 @@ class AgentProvider:
     def _write_workspace_claude_settings(self, workspace_root: Path) -> None:
         claude_dir = workspace_root / ".claude"
         claude_dir.mkdir(parents=True, exist_ok=True)
-        hook_command = self._workspace_hook_command()
+        hook_command = workspace_hook_command()
         settings = {
             "hooks": {
                 "PreToolUse": [
@@ -463,26 +468,9 @@ class AgentProvider:
         )
 
     def _write_workspace_codex_hooks(self, workspace_root: Path) -> None:
-        codex_dir = workspace_root / ".codex"
-        codex_dir.mkdir(parents=True, exist_ok=True)
-        hook_command = self._workspace_hook_command()
-        settings = {
-            "hooks": {
-                "PreToolUse": [
-                    {
-                        "matcher": "Bash|Read|Edit|Write|MultiEdit|Glob|Grep",
-                        "hooks": [{"type": "command", "command": hook_command}],
-                    }
-                ],
-                "SessionStart": [{"hooks": [{"type": "command", "command": hook_command}]}],
-                "UserPromptSubmit": [{"hooks": [{"type": "command", "command": hook_command}]}],
-                "PostToolUse": [{"hooks": [{"type": "command", "command": hook_command}]}],
-            }
-        }
-        (codex_dir / "hooks.json").write_text(
-            json.dumps(settings, indent=2) + "\n",
-            encoding="utf-8",
-        )
+        if repo_codex_hooks_path().exists():
+            return
+        write_codex_hooks_file(workspace_root / ".codex" / "hooks.json")
 
     def _write_workspace_rollout_prompt_config(self, workspace_root: Path) -> None:
         from scaling_evolve.algorithms.eve.rollout_prompts.default import (
@@ -515,13 +503,6 @@ class AgentProvider:
         (hooks_dir / "rollout_prompts.json").write_text(
             json.dumps(payload, indent=2) + "\n",
             encoding="utf-8",
-        )
-
-    def _workspace_hook_command(self) -> str:
-        repo_src_root = Path(__file__).resolve().parents[3]
-        return (
-            f"env PYTHONPATH={repo_src_root} {sys.executable} "
-            "-m scaling_evolve.providers.agent.hooks.workspace_guard"
         )
 
     def _python_execution_policy(self) -> PythonExecutionPolicy:

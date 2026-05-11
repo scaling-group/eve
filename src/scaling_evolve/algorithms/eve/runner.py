@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import atexit
 import logging
+import os
 import signal
-import sys
 from pathlib import Path
 from uuid import uuid4
 
@@ -28,6 +28,10 @@ from scaling_evolve.algorithms.eve.runtime.restore import RestoreSpec, parse_res
 from scaling_evolve.algorithms.eve.workflow.evaluation import (
     RemoteTransportHaltError,
     build_solver_evaluator,
+)
+from scaling_evolve.providers.agent.codex_hooks import (
+    ensure_codex_hooks_trusted,
+    write_repo_codex_hooks,
 )
 
 logging.basicConfig(
@@ -132,6 +136,9 @@ def run(cfg: DictConfig) -> None:
 
     driver_cfg = OmegaConf.to_container(cfg.driver, resolve=True) if "driver" in cfg else {}
     drivers = None
+    if _driver_config_uses_codex(driver_cfg):
+        write_repo_codex_hooks(repo_root)
+        ensure_codex_hooks_trusted(repo_root)
     run_root.mkdir(parents=True, exist_ok=True)
     pricing_table = load_pricing_table(repo_root / "configs" / "pricing.yaml")
 
@@ -139,7 +146,12 @@ def run(cfg: DictConfig) -> None:
         if drivers is not None:
             drivers.close()
 
-    signal.signal(signal.SIGTERM, lambda _sig, _frame: sys.exit(128 + signal.SIGTERM))
+    def _abort_on_signal(sig: int, _frame: object) -> None:
+        _cleanup_drivers()
+        os._exit(128 + sig)
+
+    signal.signal(signal.SIGTERM, _abort_on_signal)
+    signal.signal(signal.SIGINT, _abort_on_signal)
     atexit.register(_cleanup_drivers)
 
     try:
@@ -211,6 +223,35 @@ def run(cfg: DictConfig) -> None:
 @hydra.main(version_base="1.3", config_path="../../../../configs/eve")
 def main(cfg: DictConfig) -> None:
     run(cfg)
+
+
+def _driver_config_uses_codex(driver_cfg: object) -> bool:
+    if not isinstance(driver_cfg, dict):
+        return False
+    return any(
+        _driver_name(_driver_cfg_for_role(driver_cfg, role)) in {"codex_exec", "codex_tmux"}
+        for role in ("solver", "eval", "optimizer")
+    )
+
+
+def _driver_cfg_for_role(driver_cfg: dict[str, object], role: str) -> dict[str, object]:
+    resolved = {key: value for key, value in driver_cfg.items() if key != "overrides"}
+    overrides = driver_cfg.get("overrides")
+    if isinstance(overrides, dict):
+        role_override = overrides.get(role)
+        if isinstance(role_override, dict):
+            resolved.update(role_override)
+    return resolved
+
+
+def _driver_name(driver_cfg: dict[str, object]) -> str:
+    raw_driver = driver_cfg.get("driver")
+    if isinstance(raw_driver, str) and raw_driver:
+        return raw_driver
+    raw_provider = driver_cfg.get("provider")
+    if isinstance(raw_provider, str) and raw_provider:
+        return raw_provider
+    return "claude_code"
 
 
 if __name__ == "__main__":

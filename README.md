@@ -20,6 +20,15 @@
 <a href="#overview">Overview</a> &middot; <a href="#supported-agents">Supported Agents</a> &middot; <a href="#how-it-works">How It Works</a> &middot; <a href="#quick-start">Quick Start</a> &middot; <a href="#example-icon-context-length-generalization">Example</a> &middot; <a href="#citation">Citation</a>
 </p>
 
+<p align="center"><b>Unlimited agents, fully autonomous.</b></p>
+
+<p align="center">
+  <img src=".github/assets/eve-demo.gif" width="720">
+</p>
+<p align="center">
+  <sub>Each tmux pane is an independent coding agent editing, evaluating, and evolving solutions.</sub>
+</p>
+
 ## Overview
 
 Modern coding agents already have autonomous planning, complex reasoning, sophisticated context management, and sub-agent invocation. Rather than reinventing the wheel with "LLMs as optimizers", **EvE wraps existing, highly capable coding agents into a decentralized evolutionary ensemble** that co-evolves two populations: a **solver population** of functional components within a code repository, and an **agent population** whose guidance and skills are continuously refined through pairwise competition.
@@ -37,10 +46,12 @@ Any coding agent or multi-agent system can be seamlessly encapsulated as an indi
 
 EvE works with any coding agent that exposes a CLI. Currently supported:
 
-| Agent                                                        | Description              |
-| ------------------------------------------------------------ | ------------------------ |
-| [**Codex**](https://github.com/openai/codex)                 | OpenAI's coding agent    |
-| [**Claude Code**](https://github.com/anthropics/claude-code) | Anthropic's coding agent |
+| Agent                                                        | Description                         |
+| ------------------------------------------------------------ | ----------------------------------- |
+| [**Codex**](https://github.com/openai/codex)                 | OpenAI's coding agent (recommended) |
+| [**Claude Code**](https://github.com/anthropics/claude-code) | Anthropic's coding agent            |
+
+Codex is the primary development and testing target for EvE. Claude Code is supported but may lag behind on new features.
 
 Both agents support two modes:
 
@@ -52,12 +63,27 @@ Agents can be powered in two ways:
 - **Subscription**: Codex is included with a ChatGPT subscription; Claude Code is included with a Claude subscription. No API key needed.
 - **API**: Both agents also support pay-per-token API access. Third-party providers (DeepSeek, OpenRouter) are supported through provider routing.
 
-> [!TIP]
-> Before running EvE, make sure your coding agent is installed and authenticated.
-> EvE does not handle agent installation or authentication. The runner will fail
-> if the underlying agent cannot start or is not properly configured.
->
-> Copy `.env.example` to `.env` and fill in your API keys (OpenRouter, W&B, etc.).
+## First-time Setup
+
+1.  **Agent authentication.** Install and authenticate your coding agent
+    (e.g. `codex login` for Codex if you use a ChatGPT subscription, or copy `.env.example` to `.env` and
+    fill in API keys).
+
+2.  **Hook trust (for Codex >= 0.130.0).** EvE uses hooks for workspace
+    sandboxing and budget prompts. Run once per machine from the repository root if you are using codex:
+
+         uv run python -m scaling_evolve.providers.agent.codex_hooks
+         codex
+         # Type /hooks -> press t to trust all -> Esc -> Ctrl-C
+
+3.  **Verify.** Run a short smoke test using codex to confirm everything works:
+
+         uv run python -m scaling_evolve.algorithms.eve.runner \
+           --config-name=circle_packing.smoke
+
+    This runs a 3-iteration circle packing demo with headless Codex agents.
+    Add `driver=codex_tmux` to watch agents work in real time (opens a tmux
+    session; works best in iTerm2 on macOS).
 
 ## How It Works
 

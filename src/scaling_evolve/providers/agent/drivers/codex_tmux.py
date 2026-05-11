@@ -13,6 +13,7 @@ from uuid import uuid4
 
 from scaling_evolve.core.engine import RuntimeStateRef
 from scaling_evolve.core.mutation import ProviderUsage
+from scaling_evolve.providers.agent.codex_hooks import repo_codex_hooks_path
 from scaling_evolve.providers.agent.codex_isolation import (
     CodexLaunchConfig,
     IsolatedCodexHome,
@@ -240,7 +241,7 @@ class CodexTmuxSessionDriver(SessionDriver):
         isolated_home = create_isolated_codex_home(
             home_root=self._home_root(worktree_root),
             source_auth_path=Path.home() / ".codex" / "auth.json",
-            launch=CodexLaunchConfig(worktree_root=worktree_root),
+            launch=self._launch_config(worktree_root),
         )
         return self._run_rollout(
             instruction=seed.instruction,
@@ -281,7 +282,7 @@ class CodexTmuxSessionDriver(SessionDriver):
         isolated_home = create_isolated_codex_home(
             home_root=self._home_root(worktree_root),
             source_auth_path=Path.home() / ".codex" / "auth.json",
-            launch=CodexLaunchConfig(worktree_root=worktree_root),
+            launch=self._launch_config(worktree_root),
         )
         existing_session_jsonl = self._resolve_live_session_path(
             isolated_home=isolated_home,
@@ -434,7 +435,7 @@ class CodexTmuxSessionDriver(SessionDriver):
         isolated_home = reset_isolated_codex_home(
             home=isolated_home,
             source_auth_path=Path.home() / ".codex" / "auth.json",
-            launch=CodexLaunchConfig(worktree_root=worktree_root),
+            launch=self._launch_config(worktree_root),
         )
 
         summary = _summary_from_task_complete(completion.task_complete_payload) or fallback_summary
@@ -591,6 +592,14 @@ class CodexTmuxSessionDriver(SessionDriver):
 
     def _home_root(self, cwd: Path) -> Path:
         return cwd / ".codex-driver-home"
+
+    def _launch_config(self, worktree_root: Path) -> CodexLaunchConfig:
+        hooks_json_path = repo_codex_hooks_path()
+        return CodexLaunchConfig(
+            worktree_root=worktree_root,
+            hooks_json_path=hooks_json_path,
+            trusted_project_roots=(hooks_json_path.parent.parent,),
+        )
 
     def _transcript_snapshot_root(self, cwd: Path) -> Path:
         return cwd / ".codex-driver-transcripts"
