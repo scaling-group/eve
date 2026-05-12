@@ -9,6 +9,7 @@
 [![python](https://img.shields.io/badge/-Python_3.13-blue?logo=python&logoColor=white)](https://www.python.org/)
 [![hydra](https://img.shields.io/badge/Config-Hydra_1.3-89b8cd)](https://hydra.cc/)
 [![ruff](https://img.shields.io/badge/Code%20Style-Ruff-orange.svg?labelColor=gray)](https://docs.astral.sh/ruff/)<br>
+[![arXiv](https://img.shields.io/badge/arXiv-2605.09018-b31b1b.svg)](https://arxiv.org/abs/2605.09018)
 [![license](https://img.shields.io/badge/License-Apache_2.0-blue.svg?labelColor=gray)](LICENSE)
 [![PRs](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/scaling-group/eve/pulls)
 
@@ -17,7 +18,7 @@
 </div>
 
 <p align="center">
-<a href="#overview">Overview</a> &middot; <a href="#supported-agents">Supported Agents</a> &middot; <a href="#how-it-works">How It Works</a> &middot; <a href="#quick-start">Quick Start</a> &middot; <a href="#example-icon-context-length-generalization">Example</a> &middot; <a href="#citation">Citation</a>
+<a href="https://arxiv.org/abs/2605.09018">Paper</a> &middot; <a href="#overview">Overview</a> &middot; <a href="#supported-agents">Supported Agents</a> &middot; <a href="#how-it-works">How It Works</a> &middot; <a href="#quick-start">Quick Start</a> &middot; <a href="#example-icon-context-length-generalization">Example</a> &middot; <a href="#citation">Citation</a>
 </p>
 
 <p align="center"><b>Unlimited agents, fully autonomous.</b></p>
@@ -224,11 +225,14 @@ The two EvE runs descend in near-lockstep, converging to almost identical final 
 ## Citation
 
 ```bibtex
-@misc{yu2026eve,
-  title  = {Evolutionary Ensemble of Agents},
-  author = {Yu, Zongmin and Yang, Liu},
-  year   = {2026},
-  note   = {[Paper forthcoming on arXiv]}
+@article{yu2026eve,
+  title         = {Evolutionary Ensemble of Agents},
+  author        = {Yu, Zongmin and Yang, Liu},
+  year          = {2026},
+  url           = {https://arxiv.org/abs/2605.09018},
+  eprint        = {2605.09018},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.AI}
 }
 ```
 
