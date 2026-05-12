@@ -232,7 +232,7 @@ The two EvE runs descend in near-lockstep, converging to almost identical final 
   url           = {https://arxiv.org/abs/2605.09018},
   eprint        = {2605.09018},
   archivePrefix = {arXiv},
-  primaryClass  = {cs.AI}
+  primaryClass  = {cs.NE}
 }
 ```
 
