@@ -19,7 +19,7 @@
 </div>
 
 <p align="center">
-<a href="https://arxiv.org/abs/2605.09018">Paper</a> &middot; <a href="#overview">Overview</a> &middot; <a href="#supported-agents">Supported Agents</a> &middot; <a href="#how-it-works">How It Works</a> &middot; <a href="#quick-start">Quick Start</a> &middot; <a href="#example-icon-context-length-generalization">Example</a> &middot; <a href="#citation">Citation</a>
+<a href="https://arxiv.org/abs/2605.09018">Paper</a> &middot; <a href="#overview">Overview</a> &middot; <a href="#supported-agents">Supported Agents</a> &middot; <a href="#how-it-works">How It Works</a> &middot; <a href="#quick-start">Quick Start</a> &middot; <a href="#example-icon-context-length-generalization">Example</a> &middot; <a href="#community">Community</a> &middot; <a href="#citation">Citation</a>
 </p>
 
 <p align="center"><b>Unlimited agents, fully autonomous.</b></p>
@@ -203,6 +203,10 @@ uv run python -m scaling_evolve.algorithms.eve.runner \
 ```
 
 See `configs/eve/circle_packing.yaml` and `configs/eve/icon.yaml` for complete working examples.
+
+## Community
+
+Questions, feedback, or running into issues? Join our [Slack workspace](https://join.slack.com/t/eve-mf57726/shared_invite/zt-3xym0tp2c-IZOp3oHMh5Fp7xkQwkGlKg).
 
 ## Example: ICON Context Length Generalization
 
