@@ -10,6 +10,7 @@
 [![hydra](https://img.shields.io/badge/Config-Hydra_1.3-89b8cd)](https://hydra.cc/)
 [![ruff](https://img.shields.io/badge/Code%20Style-Ruff-orange.svg?labelColor=gray)](https://docs.astral.sh/ruff/)<br>
 [![arXiv](https://img.shields.io/badge/arXiv-2605.09018-b31b1b.svg)](https://arxiv.org/abs/2605.09018)
+[![Slack](https://img.shields.io/badge/Slack-Community-4A154B?logo=slack&logoColor=white)](https://join.slack.com/t/eve-mf57726/shared_invite/zt-3xym0tp2c-IZOp3oHMh5Fp7xkQwkGlKg)
 [![license](https://img.shields.io/badge/License-Apache_2.0-blue.svg?labelColor=gray)](LICENSE)
 [![PRs](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/scaling-group/eve/pulls)
 
