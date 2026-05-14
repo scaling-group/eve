@@ -1,18 +1,18 @@
 ---
 name: check-runner
-description: "Run the Phase 2 solver check workflow from output/ and report PASS or FAIL."
+description: "Run the Phase 2 solver check workflow and report PASS or FAIL."
 tools: Bash, Read
 ---
 
 # Circle Packing Sanity Check
 
-From the repository root, run this self-check workflow before you stop editing and again
+From the workspace root, run this self-check workflow before you stop editing and again
 after any meaningful change.
 
-1. Run the repository's basic validation inside `output/` folder:
+1. Run the repository's basic validation:
 
 ```bash
-python3 -m py_compile candidate.py evaluate.py
+cd output && python3 -m py_compile candidate.py evaluate.py
 ```
 
 2. Run the boundary check command:

@@ -110,7 +110,8 @@ def _probe_solver(workspace: Path, driver) -> dict[str, object]:
                 "# Solver Probe",
                 "",
                 "- Editable file: `output/candidate.py`.",
-                "- Run the predefined `check-runner` from `output/` before you stop.",
+                "- **MANDATORY:** Run the predefined `check-runner`"
+                " from the workspace root before you stop.",
             ]
         )
         + "\n",

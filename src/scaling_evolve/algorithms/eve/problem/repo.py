@@ -232,7 +232,7 @@ class RepoTaskProblem:
             "--baseline-root",
             shlex.quote(str(self.snapshot_root)),
             "--candidate-root",
-            ".",
+            "output",
         ]
         for rel_path in self.editable_files:
             command_parts.extend(["--editable-file", shlex.quote(rel_path)])

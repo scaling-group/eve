@@ -6,7 +6,7 @@ tools: Bash, Read
 
 # ICON Check Classifier
 
-Start from the workspace root or directly inside `output/`. Do not run repo-wide lint/test. Do not hand-type SSH / rsync / qsub / qstat; `check.sh` owns all remote execution and retries. The shell now stages files, submits one orchestrator PBS job, reads `result.json`, and then emits the stable `[CHECK-*]` markers. Classify from that local shell log; do not re-interpret raw remote stderr as the primary contract.
+Start from the workspace root. Do not run repo-wide lint/test. Do not hand-type SSH / rsync / qsub / qstat; `check.sh` owns all remote execution and retries. The shell now stages files, submits one orchestrator PBS job, reads `result.json`, and then emits the stable `[CHECK-*]` markers. Classify from that local shell log; do not re-interpret raw remote stderr as the primary contract.
 
 ```bash
 if [[ -d output ]] && [[ -f output/pyproject.toml ]]; then export EVE_WORKSPACE_ROOT="$(pwd)"; export EVE_OUTPUT_ROOT="$(pwd)/output"; else export EVE_OUTPUT_ROOT="$(pwd)"; export EVE_WORKSPACE_ROOT="$(cd .. && pwd)"; fi
