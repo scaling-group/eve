@@ -1,0 +1,23 @@
+cff-version: "1.2.0"
+message: "If you use this software, please cite it using these metadata."
+title: "Evolutionary Ensemble of Agents"
+url: "https://github.com/scaling-group/eve"
+authors:
+  - family-names: Yu
+    given-names: Zongmin
+  - family-names: Yang
+    given-names: Liu
+preferred-citation:
+  type: article
+  authors:
+    - family-names: Yu
+      given-names: Zongmin
+    - family-names: Yang
+      given-names: Liu
+  title: "Evolutionary Ensemble of Agents"
+  year: 2026
+  url: "https://arxiv.org/abs/2605.09018"
+  identifiers:
+    - type: other
+      value: "2605.09018"
+      description: "arXiv eprint ID"
