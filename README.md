@@ -65,6 +65,12 @@ Agents can be powered in two ways:
 - **Subscription**: Codex is included with a ChatGPT subscription; Claude Code is included with a Claude subscription. No API key needed.
 - **API**: Both agents also support pay-per-token API access. Third-party providers (DeepSeek, OpenRouter) are supported through provider routing.
 
+> [!IMPORTANT]
+> EvE orchestrates third-party coding agents; it does **not** provide unlimited access to any AI service.
+> Each agent session consumes subscription quota or API credits on **your own account**.
+> EvE does not bypass or modify any provider's authentication, rate limits, or usage restrictions.
+> Please comply with each provider's terms of service and monitor your own usage and costs.
+
 ## First-time Setup
 
 1.  **Agent authentication.** Install and authenticate your coding agent
