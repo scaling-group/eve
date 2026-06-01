@@ -23,9 +23,8 @@ from scaling_evolve.algorithms.eve.workspace.file_tree import (
     write_file_tree,
     write_project_agent_definitions,
 )
-from scaling_evolve.algorithms.eve.workspace.immutable import (
-    render_readme_template,
-    validate_readme_template,
+from scaling_evolve.algorithms.eve.workspace.immutable_renderers.default import (
+    DefaultRenderer,
 )
 
 
@@ -39,6 +38,7 @@ class SolverWorkspaceBuilder:
         problem: RepoTaskProblem,
         config: DictConfig,
         immutable_files: dict[str, str],
+        immutable_renderer: DefaultRenderer | None = None,
         rollout_prompts: dict[str, object] | None = None,
         rng: random.Random | None = None,
     ) -> None:
@@ -47,6 +47,7 @@ class SolverWorkspaceBuilder:
         self.problem = problem
         self.config = config
         self.immutable_files = dict(immutable_files)
+        self.immutable_renderer = immutable_renderer or DefaultRenderer()
         if self.immutable_files:
             readme_template = self.immutable_files.get("README.md")
             if readme_template is None:
@@ -54,7 +55,7 @@ class SolverWorkspaceBuilder:
                     "immutable workspace assets must include README.md so EvE can inject "
                     "Phase 2 runtime instructions."
                 )
-            validate_readme_template(readme_template)
+            self.immutable_renderer.validate(readme_template)
         self.rollout_prompts = rollout_prompts or {}
         self._rng = rng or random.Random()
         self.worker_index: int | None = None
@@ -180,7 +181,7 @@ class SolverWorkspaceBuilder:
                 "immutable workspace assets must include README.md so EvE can inject "
                 "Phase 2 runtime instructions."
             )
-        rendered_readme = render_readme_template(
+        rendered_readme = self.immutable_renderer.render(
             readme_path.read_text(encoding="utf-8"),
             problem=self.problem,
             config=self.config,

@@ -203,6 +203,7 @@ class EveFactory:
         if not immutable_root.is_dir():
             raise SystemExit(f"optimizer.immutable must be a directory: {immutable_root}")
         immutable_files = read_file_tree(immutable_root)
+        immutable_renderer = instantiate(config.optimizer.immutable_renderer, _convert_="all")
         rollout_prompts = {"budget": BudgetPrompt()}
 
         # --- Populations ---
@@ -228,6 +229,7 @@ class EveFactory:
             problem=task_problem,
             config=loop_cfg,
             immutable_files=immutable_files,
+            immutable_renderer=immutable_renderer,
             rollout_prompts=rollout_prompts,
         )
 

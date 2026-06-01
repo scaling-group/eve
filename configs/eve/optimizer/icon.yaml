@@ -4,6 +4,8 @@
 optimizer:
   initial_optimizer: configs/eve/optimizer/icon/initial_optimizer
   immutable: configs/eve/optimizer/icon/immutable
+  immutable_renderer:
+    _target_: scaling_evolve.algorithms.eve.workspace.immutable_renderers.default.DefaultRenderer
   evaluation:
     _target_: scaling_evolve.algorithms.eve.populations.evaluators.elo.ScalarEloEvaluator
     k_factor: 32.0

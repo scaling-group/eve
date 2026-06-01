@@ -41,7 +41,9 @@ from scaling_evolve.algorithms.eve.workflow.phase2 import (
 )
 from scaling_evolve.algorithms.eve.workflow.phase3 import score_optimizers
 from scaling_evolve.algorithms.eve.workspace.file_tree import read_file_tree
-from scaling_evolve.algorithms.eve.workspace.immutable import render_readme_template
+from scaling_evolve.algorithms.eve.workspace.immutable_renderers.default import (
+    DefaultRenderer,
+)
 from scaling_evolve.algorithms.eve.workspace.solver_workspace import (
     SolverWorkspaceBuilder,
 )
@@ -190,7 +192,7 @@ def _render_phase2_readme_for_test(
     optimizer_examples: list[PopulationEntry] | None = None,
 ) -> str:
     prefill_solver = next(entry for entry in solvers if entry.id == prefill_solver_id)
-    return render_readme_template(
+    return DefaultRenderer().render(
         config.immutable_files["README.md"],
         problem=problem,
         config=config,
