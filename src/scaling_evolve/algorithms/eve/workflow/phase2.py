@@ -148,24 +148,14 @@ class Phase2Runner:
             prefill_solver=self.prefill_solver,
             optimizer_examples=self.optimizer_examples,
         )
-        readme = self.solver_workspace_builder.instructions["phase2_readme"].render(
-            workspace_builder=self.solver_workspace_builder,
-            optimizer=self.optimizer,
-            solvers=self.solvers,
-            prefill_solver=self.prefill_solver,
-            optimizer_examples=self.optimizer_examples,
-        )
-        phase2_agent = self.solver_workspace_builder.instructions["phase2_agent"].render(
-            workspace_builder=self.solver_workspace_builder,
-            optimizer=self.optimizer,
-            solvers=self.solvers,
-            prefill_solver=self.prefill_solver,
-            optimizer_examples=self.optimizer_examples,
-        )
-        self.solver_workspace_builder.write_readme(workspace, readme)
-        self.solver_workspace_builder.write_workspace_agent_instructions(
+        if self.prefill_solver is None:
+            raise ValueError("Phase2Runner._build_workspace requires prefill_solver.")
+        self.solver_workspace_builder.write_immutable_assets(
             workspace,
-            phase2_agent,
+            optimizer=self.optimizer,
+            solvers=self.solvers,
+            prefill_solver=self.prefill_solver,
+            optimizer_examples=self.optimizer_examples,
         )
         self.workspace = workspace
 
@@ -178,11 +168,8 @@ class Phase2Runner:
         )
         rollout = self.driver.spawn(
             SessionSeed(
-                instruction=self.solver_workspace_builder.instructions["phase2_entrypoint"].render(
-                    workspace_builder=self.solver_workspace_builder,
-                    optimizer=self.optimizer,
-                    solvers=self.solvers,
-                    prefill_solver=self.prefill_solver,
+                instruction=self.solver_workspace_builder.read_entrypoint_instruction(
+                    self.workspace
                 ),
                 working_directory=str(self.workspace),
                 prompt_file="README.md",

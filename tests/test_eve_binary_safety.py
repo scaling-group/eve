@@ -40,7 +40,7 @@ def test_extract_and_seed_files_preserve_binary_folder_entries(tmp_path: Path) -
         tmp_path / "solver_workspaces",
         problem=problem,
         config=OmegaConf.create({}),
-        instructions={},
+        immutable_files={},
     )
 
     for files in (builder.extract(workspace), problem.seed_files()):

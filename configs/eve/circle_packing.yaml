@@ -3,7 +3,6 @@
 defaults:
   - runtime: default
   - loop: default
-  - prompt: default
   - driver: codex_noninteractive
   - logger: many_loggers
   - application: circle_packing

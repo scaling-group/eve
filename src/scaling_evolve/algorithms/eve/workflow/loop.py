@@ -35,7 +35,6 @@ class Eve:
         optimizer_driver: SessionDriver,
         solver_evaluator: SolverEvaluator,
         config: DictConfig,
-        instructions: dict[str, object],
         optimizer_evaluator: object,
         phase2_optimizer_sampler: object,
         phase2_solver_sampler: object,
@@ -51,7 +50,6 @@ class Eve:
         self.optimizer_driver = optimizer_driver
         self.solver_evaluator = solver_evaluator
         self.config = config
-        self.instructions = instructions
         self.optimizer_evaluator = optimizer_evaluator
         self.phase2_optimizer_sampler = phase2_optimizer_sampler
         self.phase2_solver_sampler = phase2_solver_sampler
