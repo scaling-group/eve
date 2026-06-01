@@ -192,12 +192,23 @@ class SolverWorkspaceBuilder:
         )
         readme_path.write_text(rendered_readme.strip() + "\n", encoding="utf-8")
 
-    def read_entrypoint_instruction(self, workspace: Path) -> str:
-        """Read the copied Phase 2 entrypoint instruction."""
-        path = workspace / "entrypoint.md"
-        if not path.is_file():
-            raise ValueError("immutable workspace assets must include entrypoint.md.")
-        return path.read_text(encoding="utf-8").strip()
+    def entrypoint_instruction(
+        self,
+        *,
+        optimizer: PopulationEntry | None = None,
+        solvers: list[PopulationEntry],
+        prefill_solver: PopulationEntry,
+        optimizer_examples: list[PopulationEntry] | None = None,
+    ) -> str:
+        """Return the Phase 2 entrypoint instruction from the immutable renderer."""
+        return self.immutable_renderer.entrypoint(
+            problem=self.problem,
+            config=self.config,
+            optimizer=optimizer,
+            solvers=solvers,
+            prefill_solver=prefill_solver,
+            optimizer_examples=optimizer_examples,
+        )
 
     def extract(self, workspace: Path) -> dict[str, str]:
         """Read the editable candidate files from workspace output/.

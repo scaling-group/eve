@@ -168,8 +168,11 @@ class Phase2Runner:
         )
         rollout = self.driver.spawn(
             SessionSeed(
-                instruction=self.solver_workspace_builder.read_entrypoint_instruction(
-                    self.workspace
+                instruction=self.solver_workspace_builder.entrypoint_instruction(
+                    optimizer=self.optimizer,
+                    solvers=self.solvers,
+                    prefill_solver=self.prefill_solver,
+                    optimizer_examples=self.optimizer_examples,
                 ),
                 working_directory=str(self.workspace),
                 prompt_file="README.md",

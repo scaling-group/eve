@@ -334,7 +334,6 @@ def _minimal_immutable_files() -> dict[str, str]:
         + "\n",
         "AGENTS.md": "# Workspace Agent Instructions\n",
         "CLAUDE.md": "# Workspace Agent Instructions\n",
-        "entrypoint.md": "Read `README.md` first and follow it.\n",
     }
 
 
@@ -700,7 +699,11 @@ def test_phase2_workspace_logs_are_direct_and_optimizer_history_uses_iteration_s
     assert "solver_id:" in result.optimizer_log_tree[f"{step_root}/score.yaml"]
     workspace = next((tmp_path / "solver_workspaces").glob("*"))
     assert driver.spawn_instructions == [
-        solver_workspace_builder.read_entrypoint_instruction(workspace)
+        solver_workspace_builder.entrypoint_instruction(
+            optimizer=optimizer,
+            solvers=[candidate],
+            prefill_solver=candidate,
+        )
     ]
     assert not (workspace / "eve.md").exists()
     assert (workspace / "output" / "candidate.py").exists()
