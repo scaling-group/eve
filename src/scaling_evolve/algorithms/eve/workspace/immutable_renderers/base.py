@@ -1,19 +1,16 @@
 """Base immutable-asset renderer for Eve.
 
 A renderer owns the *dynamic* side of a Phase 2 workspace: it renders the
-immutable README template and supplies the agent entrypoint instruction. Both
-go through the same literal marker replacement (``str.replace``, not
+immutable README template and supplies the prompt-folder entrypoint instruction.
+Both go through the same literal marker replacement (``str.replace``, not
 ``str.format``), so static prose may contain bare ``{`` / ``}`` (JSON, LaTeX,
-code) without breaking.
-
-The entrypoint is a fixed workflow protocol ("read the README, work inside this
-workspace"), so it lives in code rather than as a file in the immutable tree.
-Application-specific entrypoints are expressed as subclasses (see
-``IconRenderer``), selected per application via ``optimizer.immutable_renderer``:
+code) without breaking. README rendering and entrypoint delivery stay separate,
+while their source text is visible under ``optimizer.prompt``:
 
 ```yaml
 optimizer:
   immutable: configs/eve/optimizer/circle_packing/immutable
+  prompt: configs/eve/optimizer/circle_packing/prompt
   immutable_renderer:
     _target_: scaling_evolve.algorithms.eve.workspace.immutable_renderers.default.DefaultRenderer
 ```
@@ -32,8 +29,6 @@ from scaling_evolve.algorithms.eve.populations.entry import PopulationEntry
 from scaling_evolve.algorithms.eve.populations.score import score_block_lines
 from scaling_evolve.algorithms.eve.problem.repo import RepoTaskProblem
 
-_ENTRYPOINT = "Read `README.md` first and follow it. Work only inside this phase workspace."
-
 
 class ImmutableRenderer:
     """Render immutable README templates and the agent entrypoint instruction."""
@@ -45,8 +40,8 @@ class ImmutableRenderer:
         "{optimizer_examples_block}": "runtime optimizer examples and their score cards",
     }
 
-    #: Fixed workflow-protocol entrypoint. Subclasses override to extend it.
-    ENTRYPOINT: str = _ENTRYPOINT
+    def __init__(self, *, entrypoint: str | None = None) -> None:
+        self._entrypoint_template = entrypoint
 
     def render(
         self,
@@ -84,8 +79,13 @@ class ImmutableRenderer:
     ) -> str:
         """Return the agent entrypoint instruction, with markers replaced."""
 
+        if self._entrypoint_template is None:
+            raise ValueError(
+                "prompt/ENTRYPOINT.md is required before EvE can spawn a Phase 2 agent. "
+                "Load it from optimizer.prompt and pass it to the immutable renderer."
+            )
         return self._replace_markers(
-            self.ENTRYPOINT,
+            self._entrypoint_template,
             problem=problem,
             config=config,
             optimizer=optimizer,

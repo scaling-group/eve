@@ -47,6 +47,7 @@ from scaling_evolve.algorithms.eve.populations.solver_population import (
     SolverPopulation,
 )
 from scaling_evolve.algorithms.eve.problem.repo import RepoTaskProblem
+from scaling_evolve.algorithms.eve.prompt_assets import read_required_prompt_text
 from scaling_evolve.algorithms.eve.rollout_prompts.default import BudgetPrompt
 from scaling_evolve.algorithms.eve.runtime.restore import (
     RestoreResult,
@@ -203,8 +204,22 @@ class EveFactory:
         if not immutable_root.is_dir():
             raise SystemExit(f"optimizer.immutable must be a directory: {immutable_root}")
         immutable_files = read_file_tree(immutable_root)
-        immutable_renderer = instantiate(config.optimizer.immutable_renderer, _convert_="all")
-        rollout_prompts = {"budget": BudgetPrompt()}
+        prompt_value = OmegaConf.select(config, "optimizer.prompt")
+        if prompt_value is None:
+            raise SystemExit("optimizer.prompt must point to a workflow prompt directory.")
+        prompt_root = (search_root / str(prompt_value)).resolve()
+        if not prompt_root.exists():
+            raise SystemExit(f"workflow prompt directory not found: {prompt_root}")
+        if not prompt_root.is_dir():
+            raise SystemExit(f"optimizer.prompt must be a directory: {prompt_root}")
+        entrypoint_prompt = read_required_prompt_text(prompt_root, "ENTRYPOINT.md")
+        boundary_repair_prompt = read_required_prompt_text(prompt_root, "BOUNDARY_REPAIR.md")
+        immutable_renderer = instantiate(
+            config.optimizer.immutable_renderer,
+            entrypoint=entrypoint_prompt,
+            _convert_="all",
+        )
+        rollout_prompts = {"budget": BudgetPrompt(prompt_root=prompt_root)}
 
         # --- Populations ---
         solver_pop = SolverPopulation(
@@ -230,6 +245,7 @@ class EveFactory:
             config=loop_cfg,
             immutable_files=immutable_files,
             immutable_renderer=immutable_renderer,
+            boundary_repair_prompt=boundary_repair_prompt,
             rollout_prompts=rollout_prompts,
         )
 

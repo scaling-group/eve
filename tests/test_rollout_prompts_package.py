@@ -2,12 +2,21 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from scaling_evolve.algorithms.eve.rollout_prompts.default import (
     BudgetPrompt,
     PromptContext,
     StaticRolloutPrompt,
 )
 from scaling_evolve.providers.agent.turns import inspect_transcript_turn_state
+
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+_PROMPT_ROOT = _REPO_ROOT / "configs/eve/optimizer/circle_packing/prompt"
+
+
+def _budget_prompt() -> BudgetPrompt:
+    return BudgetPrompt(prompt_root=_PROMPT_ROOT)
 
 
 def test_inspect_transcript_turn_state_for_claude_payloads(tmp_path: Path) -> None:
@@ -107,7 +116,7 @@ def test_inspect_transcript_turn_state_for_codex_tmux_payloads(tmp_path: Path) -
 
 
 def test_budget_prompt_user_renders_announcement_from_context() -> None:
-    prompt = BudgetPrompt()
+    prompt = _budget_prompt()
     text = prompt.user(PromptContext(workspace=Path("."), rollout_max_turns=10))
 
     assert text == (
@@ -119,7 +128,7 @@ def test_budget_prompt_user_renders_announcement_from_context() -> None:
 
 
 def test_budget_prompt_turn_renders_remaining_turns_from_context() -> None:
-    prompt = BudgetPrompt()
+    prompt = _budget_prompt()
 
     assert (
         prompt.turn(PromptContext(workspace=Path("."), rollout_max_turns=10, turns_remaining=7))
@@ -132,7 +141,7 @@ def test_budget_prompt_turn_renders_remaining_turns_from_context() -> None:
 
 
 def test_budget_prompt_exposes_turn_template_and_format_kwargs() -> None:
-    prompt = BudgetPrompt()
+    prompt = _budget_prompt()
     ctx = PromptContext(workspace=Path("."), rollout_max_turns=12)
 
     assert (
@@ -143,9 +152,31 @@ def test_budget_prompt_exposes_turn_template_and_format_kwargs() -> None:
 
 
 def test_budget_prompt_system_is_reserved() -> None:
-    prompt = BudgetPrompt()
+    prompt = _budget_prompt()
 
     assert prompt.system(PromptContext(workspace=Path("."), rollout_max_turns=10)) is None
+
+
+def test_budget_prompt_missing_user_file_fails_loud(tmp_path: Path) -> None:
+    (tmp_path / "budget").mkdir()
+    (tmp_path / "budget" / "TURN.md").write_text(
+        "[Budget] {turns_remaining}/{rollout_max_turns} turns remaining\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(FileNotFoundError, match=r"budget/USER\.md.*workflow"):
+        BudgetPrompt(prompt_root=tmp_path)
+
+
+def test_budget_prompt_missing_turn_file_fails_loud(tmp_path: Path) -> None:
+    (tmp_path / "budget").mkdir()
+    (tmp_path / "budget" / "USER.md").write_text(
+        "Turn budget enabled: this session has {rollout_max_turns} turns per rollout.\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(FileNotFoundError, match=r"budget/TURN\.md.*workflow"):
+        BudgetPrompt(prompt_root=tmp_path)
 
 
 def test_static_rollout_prompt_supports_all_lifecycle_points(tmp_path: Path) -> None:

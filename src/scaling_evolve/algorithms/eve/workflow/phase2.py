@@ -56,15 +56,11 @@ class SolverWorkspaceEvaluation:
     evaluate_log_tree: dict[str, str]
 
 
-def phase2_boundary_repair_instruction(boundary_result: object) -> str:
+def phase2_boundary_repair_instruction(boundary_result: object, static_text: str) -> str:
     summary = boundary_result.summary()
     return "\n".join(
         [
-            "# Boundary Check Failed",
-            "",
-            "Your previous edit changed files outside the allowed editable surface.",
-            "Restore every forbidden change, then rerun the predefined `check-runner`",
-            "after each repair pass until it succeeds.",
+            static_text.strip(),
             "",
             summary,
         ]
@@ -193,7 +189,9 @@ class Phase2Runner:
             repair_attempts += 1
             rollout = self.driver.resume(
                 rollout.state,
-                instruction=phase2_boundary_repair_instruction(boundary_result),
+                instruction=self.solver_workspace_builder.boundary_repair_instruction(
+                    boundary_result
+                ),
             )
             self.optimize_rollouts.append(rollout)
             boundary_result = self.solver_evaluator.check_boundary(

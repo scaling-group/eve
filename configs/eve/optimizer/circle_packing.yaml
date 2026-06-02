@@ -4,6 +4,7 @@
 optimizer:
   initial_optimizer: configs/eve/optimizer/circle_packing/initial_optimizer
   immutable: configs/eve/optimizer/circle_packing/immutable
+  prompt: configs/eve/optimizer/circle_packing/prompt
   immutable_renderer:
     _target_: scaling_evolve.algorithms.eve.workspace.immutable_renderers.default.DefaultRenderer
   evaluation:

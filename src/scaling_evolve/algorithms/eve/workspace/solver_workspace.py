@@ -39,6 +39,7 @@ class SolverWorkspaceBuilder:
         config: DictConfig,
         immutable_files: dict[str, str],
         immutable_renderer: DefaultRenderer | None = None,
+        boundary_repair_prompt: str | None = None,
         rollout_prompts: dict[str, object] | None = None,
         rng: random.Random | None = None,
     ) -> None:
@@ -48,6 +49,7 @@ class SolverWorkspaceBuilder:
         self.config = config
         self.immutable_files = dict(immutable_files)
         self.immutable_renderer = immutable_renderer or DefaultRenderer()
+        self.boundary_repair_prompt = boundary_repair_prompt
         if self.immutable_files:
             readme_template = self.immutable_files.get("README.md")
             if readme_template is None:
@@ -209,6 +211,15 @@ class SolverWorkspaceBuilder:
             prefill_solver=prefill_solver,
             optimizer_examples=optimizer_examples,
         )
+
+    def boundary_repair_instruction(self, boundary_result: object) -> str:
+        """Return the configured boundary-repair instruction plus runtime summary."""
+        if self.boundary_repair_prompt is None:
+            raise ValueError(
+                "prompt/BOUNDARY_REPAIR.md is required before EvE can repair boundary "
+                "violations. Load it from optimizer.prompt and pass it to the workspace builder."
+            )
+        return "\n".join([self.boundary_repair_prompt.strip(), "", boundary_result.summary()])
 
     def extract(self, workspace: Path) -> dict[str, str]:
         """Read the editable candidate files from workspace output/.

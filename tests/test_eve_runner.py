@@ -392,6 +392,11 @@ def test_icon_config_defaults() -> None:
 
     assert OmegaConf.select(cfg, "prompt") is None
     assert cfg.optimizer.immutable == "configs/eve/optimizer/icon/immutable"
+    assert cfg.optimizer.prompt == "configs/eve/optimizer/icon/prompt"
+    assert (
+        cfg.optimizer.immutable_renderer._target_
+        == "scaling_evolve.algorithms.eve.workspace.immutable_renderers.default.DefaultRenderer"
+    )
     assert cfg.loop.produce_optimizer_in_phase2 == cfg.loop.n_workers_phase2
 
 
@@ -416,6 +421,7 @@ def test_circle_packing_config_defaults() -> None:
 
     assert OmegaConf.select(cfg, "prompt") is None
     assert cfg.optimizer.immutable == "configs/eve/optimizer/circle_packing/immutable"
+    assert cfg.optimizer.prompt == "configs/eve/optimizer/circle_packing/prompt"
     assert cfg.loop.produce_optimizer_in_phase2 == cfg.loop.n_workers_phase2
 
 

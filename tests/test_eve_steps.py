@@ -23,6 +23,7 @@ from scaling_evolve.algorithms.eve.populations.samplers.rank_softmax import (
 )
 from scaling_evolve.algorithms.eve.populations.samplers.uniform import UniformSampler
 from scaling_evolve.algorithms.eve.problem.repo import RepoTaskProblem
+from scaling_evolve.algorithms.eve.prompt_assets import read_required_prompt_text
 from scaling_evolve.algorithms.eve.rollout_prompts.default import BudgetPrompt
 from scaling_evolve.algorithms.eve.workflow.boundary import (
     BoundaryCheckResult,
@@ -53,6 +54,32 @@ _REPO_ROOT = Path(__file__).resolve().parents[1]
 
 def _default_immutable_files() -> dict[str, str]:
     return read_file_tree(_REPO_ROOT / "configs/eve/optimizer/circle_packing/immutable")
+
+
+def _default_prompt_root() -> Path:
+    return _REPO_ROOT / "configs/eve/optimizer/circle_packing/prompt"
+
+
+def _default_renderer() -> DefaultRenderer:
+    return DefaultRenderer(
+        entrypoint=read_required_prompt_text(_default_prompt_root(), "ENTRYPOINT.md")
+    )
+
+
+def _default_boundary_repair_prompt() -> str:
+    return read_required_prompt_text(_default_prompt_root(), "BOUNDARY_REPAIR.md")
+
+
+def _default_budget_prompt() -> BudgetPrompt:
+    return BudgetPrompt(prompt_root=_default_prompt_root())
+
+
+def _solver_workspace_builder_kwargs(config: DictConfig) -> dict[str, object]:
+    return {
+        "immutable_files": _immutable_files(config),
+        "immutable_renderer": _default_renderer(),
+        "boundary_repair_prompt": _default_boundary_repair_prompt(),
+    }
 
 
 def _make_test_config(workspace_root: Path | str = "run", **overrides) -> DictConfig:
@@ -286,7 +313,7 @@ def _make_loop(
         tmp_path / "solver_workspaces",
         problem=problem,
         config=config,
-        immutable_files=_immutable_files(config),
+        **_solver_workspace_builder_kwargs(config),
     )
     solver_evaluator = build_solver_evaluator(
         problem,
@@ -646,7 +673,7 @@ def test_phase2_workspace_logs_are_direct_and_optimizer_history_uses_iteration_s
         tmp_path / "solver_workspaces",
         problem=problem,
         config=config,
-        immutable_files=_immutable_files(config),
+        **_solver_workspace_builder_kwargs(config),
     )
     optimizer = PopulationEntry(
         id="opt-1",
@@ -733,7 +760,7 @@ def test_phase2_can_produce_optimizer_when_configured(tmp_path: Path) -> None:
         tmp_path / "solver_workspaces",
         problem=problem,
         config=config,
-        immutable_files=_immutable_files(config),
+        **_solver_workspace_builder_kwargs(config),
     )
     optimizer = PopulationEntry(
         id="opt-1",
@@ -805,7 +832,7 @@ def test_phase2_skips_optimizer_candidate_when_guidance_is_unchanged(
         tmp_path / "solver_workspaces",
         problem=problem,
         config=config,
-        immutable_files=_immutable_files(config),
+        **_solver_workspace_builder_kwargs(config),
     )
     optimizer = PopulationEntry(
         id="opt-1",
@@ -882,7 +909,7 @@ def test_phase2_batch_adds_configured_optimizer_candidate(tmp_path: Path) -> Non
         tmp_path / "solver_workspaces",
         problem=problem,
         config=config,
-        immutable_files=_immutable_files(config),
+        **_solver_workspace_builder_kwargs(config),
     )
     solver_pop = _Population(
         [
@@ -949,7 +976,7 @@ def test_phase2_workspace_uses_optimizer_examples_when_enabled(tmp_path: Path) -
         tmp_path / "solver_workspaces",
         problem=problem,
         config=config,
-        immutable_files=_immutable_files(config),
+        **_solver_workspace_builder_kwargs(config),
     )
     optimizer = PopulationEntry(
         id="opt_current",
@@ -1037,7 +1064,7 @@ def test_phase2_batch_reuses_same_optimizer_examples_for_all_workers(
         tmp_path / "solver_workspaces",
         problem=problem,
         config=config,
-        immutable_files=_immutable_files(config),
+        **_solver_workspace_builder_kwargs(config),
     )
     solver_pop = _Population(
         [
@@ -1170,7 +1197,7 @@ def test_phase2_batch_samples_produced_optimizers_when_configured(
         tmp_path / "solver_workspaces",
         problem=problem,
         config=config,
-        immutable_files=_immutable_files(config),
+        **_solver_workspace_builder_kwargs(config),
     )
     solver_pop = _Population(
         [
@@ -1344,7 +1371,7 @@ def test_phase2_system_prompt_omits_removed_important_message(tmp_path: Path) ->
         tmp_path / "solver_workspaces",
         problem=problem,
         config=config,
-        immutable_files=_immutable_files(config),
+        **_solver_workspace_builder_kwargs(config),
     )
     optimizer = PopulationEntry(
         id="opt-1",
@@ -1393,8 +1420,8 @@ def test_phase2_runner_writes_rollout_prompt_specs_into_workspace(tmp_path: Path
         tmp_path / "solver_workspaces",
         problem=problem,
         config=config,
-        immutable_files=_immutable_files(config),
-        rollout_prompts={"budget": BudgetPrompt()},
+        **_solver_workspace_builder_kwargs(config),
+        rollout_prompts={"budget": _default_budget_prompt()},
     )
     optimizer = PopulationEntry(
         id="opt-1",
@@ -1457,7 +1484,7 @@ def test_solver_workspace_exposes_context_skills_via_root_links(tmp_path: Path) 
         tmp_path / "solver_workspaces",
         problem=problem,
         config=config,
-        immutable_files=_immutable_files(config),
+        **_solver_workspace_builder_kwargs(config),
     )
     candidate = PopulationEntry(
         id="solver_1",
@@ -1549,7 +1576,7 @@ def test_solver_workspace_builder_copies_workspace_agent_instruction_files(tmp_p
         tmp_path / "solver_workspaces",
         problem=problem,
         config=config,
-        immutable_files=_immutable_files(config),
+        **_solver_workspace_builder_kwargs(config),
     )
     workspace = tmp_path / "workspace"
     workspace.mkdir()
@@ -2062,7 +2089,7 @@ def test_extract_includes_editable_folder_files(tmp_path: Path) -> None:
         tmp_path / "solver_workspaces",
         problem=problem,
         config=config,
-        immutable_files=_immutable_files(config),
+        **_solver_workspace_builder_kwargs(config),
     )
     workspace, _ = builder.build({}, [], workspace_id="workspace-1")
     output_dir = workspace / "output"
@@ -2078,10 +2105,28 @@ def test_extract_includes_editable_folder_files(tmp_path: Path) -> None:
 def test_boundary_repair_instruction_requires_rechecking_each_repair_pass() -> None:
     result = BoundaryCheckResult(forbidden_modified=("README.md",))
 
-    instruction = phase2_boundary_repair_instruction(result)
+    instruction = phase2_boundary_repair_instruction(result, _default_boundary_repair_prompt())
 
     assert "after each repair pass" in instruction
     assert "`check-runner`" in instruction
+
+
+def test_boundary_repair_instruction_uses_configured_prompt(tmp_path: Path) -> None:
+    result = BoundaryCheckResult(forbidden_modified=("README.md",))
+    problem = _make_problem(tmp_path)
+    config = _make_test_config(workspace_root=tmp_path / "run")
+    builder = SolverWorkspaceBuilder(
+        tmp_path / "solver_workspaces",
+        problem=problem,
+        config=config,
+        **_solver_workspace_builder_kwargs(config),
+    )
+
+    instruction = builder.boundary_repair_instruction(result)
+
+    assert instruction == phase2_boundary_repair_instruction(
+        result, _default_boundary_repair_prompt()
+    )
 
 
 def test_solver_workspace_embeds_check_agent_from_config(tmp_path: Path) -> None:
@@ -2091,7 +2136,7 @@ def test_solver_workspace_embeds_check_agent_from_config(tmp_path: Path) -> None
         tmp_path / "solver_workspaces",
         problem=problem,
         config=config,
-        immutable_files=_immutable_files(config),
+        **_solver_workspace_builder_kwargs(config),
     )
     workspace, _ = builder.build({}, [], workspace_id="workspace-1")
     claude_check = (workspace / ".claude" / "agents" / "check-runner.md").read_text(
@@ -2114,7 +2159,7 @@ def test_solver_workspace_name_uses_underscore_timestamp_format(tmp_path: Path) 
         tmp_path / "solver_workspaces",
         problem=problem,
         config=config,
-        immutable_files=_immutable_files(config),
+        **_solver_workspace_builder_kwargs(config),
     )
 
     workspace, _ = builder.build({}, [], workspace_id="workspace-1")
