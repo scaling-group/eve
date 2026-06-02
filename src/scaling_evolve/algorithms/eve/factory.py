@@ -47,6 +47,8 @@ from scaling_evolve.algorithms.eve.populations.solver_population import (
     SolverPopulation,
 )
 from scaling_evolve.algorithms.eve.problem.repo import RepoTaskProblem
+from scaling_evolve.algorithms.eve.prompt_assets import read_required_prompt_text
+from scaling_evolve.algorithms.eve.rollout_prompts.default import BudgetPrompt
 from scaling_evolve.algorithms.eve.runtime.restore import (
     RestoreResult,
     restore_populations_from_run,
@@ -151,6 +153,7 @@ class EveFactory:
         optimizer_driver: SessionDriver,
         logger: EveLogger | None = None,
         task_problem: RepoTaskProblem | None = None,
+        search_root: Path | None = None,
     ) -> EveFactory:
         """Assemble an EveFactory from an DictConfig.
 
@@ -164,6 +167,7 @@ class EveFactory:
             Assembled EveFactory.
         """
         loop_cfg = config.loop
+        search_root = Path(__file__).resolve().parents[4] if search_root is None else search_root
         workspace_root = Path(loop_cfg.workspace_root)
         workspace_root.mkdir(parents=True, exist_ok=True)
 
@@ -191,24 +195,31 @@ class EveFactory:
             key: instantiate(dict(loop_cfg.sampling[key]), _convert_="all") for key in sampling_keys
         }
         optimizer_evaluator = instantiate(config.optimizer.evaluation, _convert_="all")
-        instruction_fields = (
-            "phase2_readme",
-            "phase2_entrypoint",
-            "phase2_agent",
+        immutable_value = OmegaConf.select(config, "optimizer.immutable")
+        if immutable_value is None:
+            raise SystemExit("optimizer.immutable must point to an immutable asset directory.")
+        immutable_root = (search_root / str(immutable_value)).resolve()
+        if not immutable_root.exists():
+            raise SystemExit(f"immutable asset directory not found: {immutable_root}")
+        if not immutable_root.is_dir():
+            raise SystemExit(f"optimizer.immutable must be a directory: {immutable_root}")
+        immutable_files = read_file_tree(immutable_root)
+        prompt_value = OmegaConf.select(config, "optimizer.prompt")
+        if prompt_value is None:
+            raise SystemExit("optimizer.prompt must point to a workflow prompt directory.")
+        prompt_root = (search_root / str(prompt_value)).resolve()
+        if not prompt_root.exists():
+            raise SystemExit(f"workflow prompt directory not found: {prompt_root}")
+        if not prompt_root.is_dir():
+            raise SystemExit(f"optimizer.prompt must be a directory: {prompt_root}")
+        entrypoint_prompt = read_required_prompt_text(prompt_root, "ENTRYPOINT.md")
+        boundary_repair_prompt = read_required_prompt_text(prompt_root, "BOUNDARY_REPAIR.md")
+        immutable_renderer = instantiate(
+            config.optimizer.immutable_renderer,
+            entrypoint=entrypoint_prompt,
+            _convert_="all",
         )
-        instruction_cfg = {key: dict(config.prompt[key]) for key in instruction_fields}
-        instructions = {
-            field_name: instantiate(instruction_cfg[field_name], _convert_="all")
-            for field_name in instruction_fields
-        }
-        rollout_prompt_fields = ("budget",)
-        rollout_prompt_cfg = {
-            key: dict(config.prompt.rollout[key]) for key in rollout_prompt_fields
-        }
-        rollout_prompts = {
-            field_name: instantiate(rollout_prompt_cfg[field_name], _convert_="all")
-            for field_name in rollout_prompt_fields
-        }
+        rollout_prompts = {"budget": BudgetPrompt(prompt_root=prompt_root)}
 
         # --- Populations ---
         solver_pop = SolverPopulation(
@@ -232,7 +243,9 @@ class EveFactory:
             solver_ws_root,
             problem=task_problem,
             config=loop_cfg,
-            instructions=instructions,
+            immutable_files=immutable_files,
+            immutable_renderer=immutable_renderer,
+            boundary_repair_prompt=boundary_repair_prompt,
             rollout_prompts=rollout_prompts,
         )
 
@@ -245,7 +258,6 @@ class EveFactory:
             optimizer_driver=optimizer_driver,
             solver_evaluator=solver_evaluator,
             config=loop_cfg,
-            instructions=instructions,
             optimizer_evaluator=optimizer_evaluator,
             phase2_optimizer_sampler=samplers["phase1_optimizer_population"],
             phase2_solver_sampler=samplers["phase1_solver_population"],

@@ -10,7 +10,6 @@ from types import SimpleNamespace
 
 import pytest
 import yaml
-from hydra.utils import instantiate
 from omegaconf import DictConfig, OmegaConf
 
 from scaling_evolve.algorithms.eve.populations.entry import PopulationEntry
@@ -24,6 +23,7 @@ from scaling_evolve.algorithms.eve.populations.samplers.rank_softmax import (
 )
 from scaling_evolve.algorithms.eve.populations.samplers.uniform import UniformSampler
 from scaling_evolve.algorithms.eve.problem.repo import RepoTaskProblem
+from scaling_evolve.algorithms.eve.prompt_assets import read_required_prompt_text
 from scaling_evolve.algorithms.eve.rollout_prompts.default import BudgetPrompt
 from scaling_evolve.algorithms.eve.workflow.boundary import (
     BoundaryCheckResult,
@@ -41,9 +41,45 @@ from scaling_evolve.algorithms.eve.workflow.phase2 import (
     phase2_boundary_repair_instruction,
 )
 from scaling_evolve.algorithms.eve.workflow.phase3 import score_optimizers
+from scaling_evolve.algorithms.eve.workspace.file_tree import read_file_tree
+from scaling_evolve.algorithms.eve.workspace.immutable_renderers.default import (
+    DefaultRenderer,
+)
 from scaling_evolve.algorithms.eve.workspace.solver_workspace import (
     SolverWorkspaceBuilder,
 )
+
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+
+
+def _default_immutable_files() -> dict[str, str]:
+    return read_file_tree(_REPO_ROOT / "configs/eve/optimizer/circle_packing/immutable")
+
+
+def _default_prompt_root() -> Path:
+    return _REPO_ROOT / "configs/eve/optimizer/circle_packing/prompt"
+
+
+def _default_renderer() -> DefaultRenderer:
+    return DefaultRenderer(
+        entrypoint=read_required_prompt_text(_default_prompt_root(), "ENTRYPOINT.md")
+    )
+
+
+def _default_boundary_repair_prompt() -> str:
+    return read_required_prompt_text(_default_prompt_root(), "BOUNDARY_REPAIR.md")
+
+
+def _default_budget_prompt() -> BudgetPrompt:
+    return BudgetPrompt(prompt_root=_default_prompt_root())
+
+
+def _solver_workspace_builder_kwargs(config: DictConfig) -> dict[str, object]:
+    return {
+        "immutable_files": _immutable_files(config),
+        "immutable_renderer": _default_renderer(),
+        "boundary_repair_prompt": _default_boundary_repair_prompt(),
+    }
 
 
 def _make_test_config(workspace_root: Path | str = "run", **overrides) -> DictConfig:
@@ -51,7 +87,6 @@ def _make_test_config(workspace_root: Path | str = "run", **overrides) -> DictCo
     _S = "scaling_evolve.algorithms.eve"
     _RS = f"{_S}.populations.samplers.rank_softmax"
     _US = f"{_S}.populations.samplers.uniform"
-    base = "configs/eve/prompt/templates/built_in"
     cfg = {
         "max_iterations": 2,
         "n_workers_phase2": 2,
@@ -92,26 +127,7 @@ def _make_test_config(workspace_root: Path | str = "run", **overrides) -> DictCo
                 "replacement_mode": "no_replacement",
             },
         },
-        "instructions": {
-            "phase2_readme": {
-                "_target_": f"{_S}.instructions.default.Phase2ReadmeInstruction",
-                "file_list": [
-                    f"{base}/design_doc.md",
-                    f"{base}/phase2_readme.md",
-                    f"{base}/phase2_score_semantics.md",
-                ],
-            },
-            "phase2_entrypoint": {
-                "_target_": f"{_S}.instructions.default.Phase2EntrypointInstruction",
-                "file_list": [f"{base}/phase2_entrypoint.md"],
-            },
-            "phase2_agent": {
-                "_target_": f"{_S}.instructions.default.Phase2AgentInstruction",
-                "file_list": [
-                    f"{base}/workspace_agent.md",
-                ],
-            },
-        },
+        "immutable_files": _default_immutable_files(),
         "rollout": {
             "budget": {
                 "_target_": f"{_S}.rollout_prompts.default.BudgetPrompt",
@@ -186,33 +202,12 @@ class _FakePopulation:
 
 
 def _instantiate_test_instructions(config: DictConfig) -> DictConfig:
-    """Instantiate instruction objects in-place on a DictConfig."""
-    config.instructions._set_flag("allow_objects", True)
-    for field_name in (
-        "phase2_readme",
-        "phase2_entrypoint",
-        "phase2_agent",
-    ):
-        value = config.instructions[field_name]
-        if isinstance(value, (dict, DictConfig)):
-            config.instructions[field_name] = instantiate(
-                OmegaConf.to_container(value, resolve=True)
-                if isinstance(value, DictConfig)
-                else dict(value),
-                _convert_="all",
-            )
+    """Compatibility shim for tests that predate immutable workspace assets."""
     return config
 
 
-def _instruction_objects(config: DictConfig) -> dict[str, object]:
-    return {
-        field_name: config.instructions[field_name]
-        for field_name in (
-            "phase2_readme",
-            "phase2_entrypoint",
-            "phase2_agent",
-        )
-    }
+def _immutable_files(config: DictConfig) -> dict[str, str]:
+    return dict(OmegaConf.to_container(config.immutable_files, resolve=True))
 
 
 def _render_phase2_readme_for_test(
@@ -224,9 +219,10 @@ def _render_phase2_readme_for_test(
     optimizer_examples: list[PopulationEntry] | None = None,
 ) -> str:
     prefill_solver = next(entry for entry in solvers if entry.id == prefill_solver_id)
-    workspace_builder = SimpleNamespace(problem=problem, config=config)
-    return config.instructions["phase2_readme"].render(
-        workspace_builder=workspace_builder,
+    return DefaultRenderer().render(
+        config.immutable_files["README.md"],
+        problem=problem,
+        config=config,
         solvers=solvers,
         prefill_solver=prefill_solver,
         optimizer_examples=optimizer_examples or [],
@@ -317,7 +313,7 @@ def _make_loop(
         tmp_path / "solver_workspaces",
         problem=problem,
         config=config,
-        instructions=_instruction_objects(config),
+        **_solver_workspace_builder_kwargs(config),
     )
     solver_evaluator = build_solver_evaluator(
         problem,
@@ -340,7 +336,6 @@ def _make_loop(
         optimizer_driver=object(),  # type: ignore[arg-type]
         solver_evaluator=solver_evaluator,
         config=config,
-        instructions=_instruction_objects(config),
         optimizer_evaluator=ScalarEloEvaluator(),
         phase2_optimizer_sampler=UniformSampler(replacement_mode="no_replacement"),
         phase2_solver_sampler=UniformSampler(replacement_mode="no_replacement"),
@@ -351,22 +346,21 @@ def _make_loop(
     return loop, solver_pop
 
 
-def _minimal_instruction_overrides() -> dict[str, dict[str, object]]:
-    base = "configs/eve/prompt/templates/built_in"
-    _S = "scaling_evolve.algorithms.eve"
+def _minimal_immutable_files() -> dict[str, str]:
     return {
-        "phase2_readme": {
-            "_target_": f"{_S}.instructions.default.Phase2ReadmeInstruction",
-            "file_list": [f"{base}/phase2_readme.md"],
-        },
-        "phase2_entrypoint": {
-            "_target_": f"{_S}.instructions.default.Phase2EntrypointInstruction",
-            "file_list": [f"{base}/phase2_entrypoint.md"],
-        },
-        "phase2_agent": {
-            "_target_": f"{_S}.instructions.default.Phase2AgentInstruction",
-            "file_list": [f"{base}/workspace_agent.md"],
-        },
+        "README.md": "\n".join(
+            [
+                "# Workspace Notes",
+                "",
+                "{editable_files_block}",
+                "{editable_folders_block}",
+                "{solver_examples_block}",
+                "{optimizer_examples_block}",
+            ]
+        )
+        + "\n",
+        "AGENTS.md": "# Workspace Agent Instructions\n",
+        "CLAUDE.md": "# Workspace Agent Instructions\n",
     }
 
 
@@ -514,7 +508,7 @@ def test_loop_writes_wal_safe_iter_snapshots(tmp_path: Path, monkeypatch) -> Non
     loop, _solver_pop = _make_loop(
         tmp_path,
         eval_fn=eval_fn,
-        instructions=_minimal_instruction_overrides(),
+        immutable_files=_minimal_immutable_files(),
         enable_iter_snapshots=True,
         iter_snapshot_retain=2,
     )
@@ -679,7 +673,7 @@ def test_phase2_workspace_logs_are_direct_and_optimizer_history_uses_iteration_s
         tmp_path / "solver_workspaces",
         problem=problem,
         config=config,
-        instructions=_instruction_objects(config),
+        **_solver_workspace_builder_kwargs(config),
     )
     optimizer = PopulationEntry(
         id="opt-1",
@@ -730,15 +724,14 @@ def test_phase2_workspace_logs_are_direct_and_optimizer_history_uses_iteration_s
     assert f"{step_root}/logs/evaluate/summary.txt" in result.optimizer_log_tree
     assert f"{step_root}/score.yaml" in result.optimizer_log_tree
     assert "solver_id:" in result.optimizer_log_tree[f"{step_root}/score.yaml"]
+    workspace = next((tmp_path / "solver_workspaces").glob("*"))
     assert driver.spawn_instructions == [
-        solver_workspace_builder.instructions["phase2_entrypoint"].render(
-            workspace_builder=solver_workspace_builder,
+        solver_workspace_builder.entrypoint_instruction(
             optimizer=optimizer,
             solvers=[candidate],
             prefill_solver=candidate,
         )
     ]
-    workspace = next((tmp_path / "solver_workspaces").glob("*"))
     assert not (workspace / "eve.md").exists()
     assert (workspace / "output" / "candidate.py").exists()
     assert (workspace / "output" / "README.md").exists()
@@ -767,7 +760,7 @@ def test_phase2_can_produce_optimizer_when_configured(tmp_path: Path) -> None:
         tmp_path / "solver_workspaces",
         problem=problem,
         config=config,
-        instructions=_instruction_objects(config),
+        **_solver_workspace_builder_kwargs(config),
     )
     optimizer = PopulationEntry(
         id="opt-1",
@@ -839,7 +832,7 @@ def test_phase2_skips_optimizer_candidate_when_guidance_is_unchanged(
         tmp_path / "solver_workspaces",
         problem=problem,
         config=config,
-        instructions=_instruction_objects(config),
+        **_solver_workspace_builder_kwargs(config),
     )
     optimizer = PopulationEntry(
         id="opt-1",
@@ -916,7 +909,7 @@ def test_phase2_batch_adds_configured_optimizer_candidate(tmp_path: Path) -> Non
         tmp_path / "solver_workspaces",
         problem=problem,
         config=config,
-        instructions=_instruction_objects(config),
+        **_solver_workspace_builder_kwargs(config),
     )
     solver_pop = _Population(
         [
@@ -983,7 +976,7 @@ def test_phase2_workspace_uses_optimizer_examples_when_enabled(tmp_path: Path) -
         tmp_path / "solver_workspaces",
         problem=problem,
         config=config,
-        instructions=_instruction_objects(config),
+        **_solver_workspace_builder_kwargs(config),
     )
     optimizer = PopulationEntry(
         id="opt_current",
@@ -1071,7 +1064,7 @@ def test_phase2_batch_reuses_same_optimizer_examples_for_all_workers(
         tmp_path / "solver_workspaces",
         problem=problem,
         config=config,
-        instructions=_instruction_objects(config),
+        **_solver_workspace_builder_kwargs(config),
     )
     solver_pop = _Population(
         [
@@ -1204,7 +1197,7 @@ def test_phase2_batch_samples_produced_optimizers_when_configured(
         tmp_path / "solver_workspaces",
         problem=problem,
         config=config,
-        instructions=_instruction_objects(config),
+        **_solver_workspace_builder_kwargs(config),
     )
     solver_pop = _Population(
         [
@@ -1378,7 +1371,7 @@ def test_phase2_system_prompt_omits_removed_important_message(tmp_path: Path) ->
         tmp_path / "solver_workspaces",
         problem=problem,
         config=config,
-        instructions=_instruction_objects(config),
+        **_solver_workspace_builder_kwargs(config),
     )
     optimizer = PopulationEntry(
         id="opt-1",
@@ -1427,8 +1420,8 @@ def test_phase2_runner_writes_rollout_prompt_specs_into_workspace(tmp_path: Path
         tmp_path / "solver_workspaces",
         problem=problem,
         config=config,
-        instructions=_instruction_objects(config),
-        rollout_prompts={"budget": BudgetPrompt()},
+        **_solver_workspace_builder_kwargs(config),
+        rollout_prompts={"budget": _default_budget_prompt()},
     )
     optimizer = PopulationEntry(
         id="opt-1",
@@ -1491,7 +1484,7 @@ def test_solver_workspace_exposes_context_skills_via_root_links(tmp_path: Path) 
         tmp_path / "solver_workspaces",
         problem=problem,
         config=config,
-        instructions=_instruction_objects(config),
+        **_solver_workspace_builder_kwargs(config),
     )
     candidate = PopulationEntry(
         id="solver_1",
@@ -1571,24 +1564,34 @@ def test_readme_renders_current_score_shape(tmp_path: Path) -> None:
     assert "speed: 10.0" in instruction
 
 
-def test_solver_workspace_builder_writes_workspace_agent_instruction_files(tmp_path: Path) -> None:
+def test_solver_workspace_builder_copies_workspace_agent_instruction_files(tmp_path: Path) -> None:
     problem = _make_problem(tmp_path)
     config = _instantiate_test_instructions(
         _make_test_config(
             workspace_root=tmp_path / "run",
-            instructions=_minimal_instruction_overrides(),
+            immutable_files=_minimal_immutable_files(),
         )
     )
     builder = SolverWorkspaceBuilder(
         tmp_path / "solver_workspaces",
         problem=problem,
         config=config,
-        instructions=_instruction_objects(config),
+        **_solver_workspace_builder_kwargs(config),
     )
     workspace = tmp_path / "workspace"
     workspace.mkdir()
+    candidate = PopulationEntry(
+        id="solver_1",
+        files={"candidate.py": "print('seed')\n"},
+        score=_score(0.4),
+        logs={},
+    )
 
-    builder.write_workspace_agent_instructions(workspace, "# Workspace Agent Instructions\n")
+    builder.write_immutable_assets(
+        workspace,
+        solvers=[candidate],
+        prefill_solver=candidate,
+    )
 
     assert (workspace / "AGENTS.md").read_text(encoding="utf-8") == (
         "# Workspace Agent Instructions\n"
@@ -1847,11 +1850,11 @@ def test_task_context_tells_agent_to_use_boundary_check_during_editing(tmp_path:
         prefill_solver_id="task-1",
     )
 
-    assert "Current phase: Phase 2 solver optimization." in instruction
-    assert "improved solver candidate" in instruction
+    assert "Current phase: Phase 2 solver and optimizer optimization." in instruction
+    assert "improved solver candidate in `output/`" in instruction
     assert "Editable files:" in instruction
     assert "invoke the predefined `check-runner` sub-agent" in instruction
-    assert "repository root in `output/`" in instruction
+    assert "`output/` is the solver submission tree" in instruction
 
 
 def test_solver_readme_includes_configured_score_explanation(tmp_path: Path) -> None:
@@ -1929,18 +1932,7 @@ def test_phase2_self_optimize_readme_allows_output_and_guidance_edits(
     config = _instantiate_test_instructions(
         _make_test_config(
             workspace_root=tmp_path / "run",
-            instructions={
-                "phase2_readme": {
-                    "_target_": (
-                        "scaling_evolve.algorithms.eve.instructions.icon.Phase2ReadmeInstruction"
-                    ),
-                    "file_list": [
-                        "configs/eve/prompt/templates/built_in/design_doc.md",
-                        "configs/eve/prompt/templates/icon/phase2_self_optimize_readme.md",
-                        "configs/eve/prompt/templates/built_in/phase2_score_semantics.md",
-                    ],
-                },
-            },
+            immutable_files=read_file_tree(_REPO_ROOT / "configs/eve/optimizer/icon/immutable"),
         )
     )
     instruction = _render_phase2_readme_for_test(
@@ -1962,57 +1954,66 @@ def test_phase2_self_optimize_readme_allows_output_and_guidance_edits(
     )
 
 
-def test_indexed_phase2_readme_uses_worker_index_modulo(tmp_path: Path) -> None:
+def test_readme_literal_replace_allows_bare_braces(tmp_path: Path) -> None:
     candidate = PopulationEntry(
         id="task-1",
         files={"candidate.py": "print('seed')\n"},
         score=_score(0.5),
         logs={},
     )
-    base = tmp_path / "instructions"
-    base.mkdir()
-    (base / "variant_a.md").write_text("Variant A\n\n{solver_examples_block}\n", encoding="utf-8")
-    (base / "variant_b.md").write_text("Variant B\n\n{solver_examples_block}\n", encoding="utf-8")
 
     problem = _make_problem(tmp_path)
-    instruction = instantiate(
-        {
-            "_target_": (
-                "scaling_evolve.algorithms.eve.instructions.indexed.IndexedPhase2ReadmeInstruction"
-            ),
-            "file_lists": [
-                [str(base / "variant_a.md")],
-                [str(base / "variant_b.md")],
-            ],
-        }
+    immutable_files = _minimal_immutable_files()
+    immutable_files["README.md"] = "\n".join(
+        [
+            "# Workspace Notes",
+            "",
+            'Static JSON example: {"radius": 1, "ok": true}',
+            "",
+            "{editable_files_block}",
+            "{editable_folders_block}",
+            "{solver_examples_block}",
+            "{optimizer_examples_block}",
+        ]
     )
-    workspace_builder = SimpleNamespace(
+    config = _instantiate_test_instructions(
+        _make_test_config(workspace_root=tmp_path / "run", immutable_files=immutable_files)
+    )
+
+    instruction = _render_phase2_readme_for_test(
+        config,
         problem=problem,
-        config=SimpleNamespace(n_optimizer_examples_phase2=0),
-        worker_index=0,
+        solvers=[candidate],
+        prefill_solver_id="task-1",
     )
 
-    first_instruction = instruction.render(
-        workspace_builder=workspace_builder,
-        solvers=[candidate],
-        prefill_solver=candidate,
+    assert 'Static JSON example: {"radius": 1, "ok": true}' in instruction
+    assert "`solver_examples/task-1/` <- prefill" in instruction
+
+
+def test_readme_marker_contract_fails_loud(tmp_path: Path) -> None:
+    candidate = PopulationEntry(
+        id="task-1",
+        files={"candidate.py": "print('seed')\n"},
+        score=_score(0.5),
+        logs={},
     )
-    workspace_builder.worker_index = 1
-    second_instruction = instruction.render(
-        workspace_builder=workspace_builder,
-        solvers=[candidate],
-        prefill_solver=candidate,
+    immutable_files = _minimal_immutable_files()
+    immutable_files["README.md"] = immutable_files["README.md"].replace(
+        "{solver_examples_block}",
+        "",
     )
-    workspace_builder.worker_index = 3
-    wrapped_instruction = instruction.render(
-        workspace_builder=workspace_builder,
-        solvers=[candidate],
-        prefill_solver=candidate,
+    config = _instantiate_test_instructions(
+        _make_test_config(workspace_root=tmp_path / "run", immutable_files=immutable_files)
     )
 
-    assert "Variant A" in first_instruction
-    assert "Variant B" in second_instruction
-    assert "Variant B" in wrapped_instruction
+    with pytest.raises(ValueError, match=r"\{solver_examples_block\}"):
+        _render_phase2_readme_for_test(
+            config,
+            problem=_make_problem(tmp_path),
+            solvers=[candidate],
+            prefill_solver_id="task-1",
+        )
 
 
 def test_boundary_check_allows_editable_folder_changes(tmp_path: Path) -> None:
@@ -2088,7 +2089,7 @@ def test_extract_includes_editable_folder_files(tmp_path: Path) -> None:
         tmp_path / "solver_workspaces",
         problem=problem,
         config=config,
-        instructions=_instruction_objects(config),
+        **_solver_workspace_builder_kwargs(config),
     )
     workspace, _ = builder.build({}, [], workspace_id="workspace-1")
     output_dir = workspace / "output"
@@ -2104,10 +2105,28 @@ def test_extract_includes_editable_folder_files(tmp_path: Path) -> None:
 def test_boundary_repair_instruction_requires_rechecking_each_repair_pass() -> None:
     result = BoundaryCheckResult(forbidden_modified=("README.md",))
 
-    instruction = phase2_boundary_repair_instruction(result)
+    instruction = phase2_boundary_repair_instruction(result, _default_boundary_repair_prompt())
 
     assert "after each repair pass" in instruction
     assert "`check-runner`" in instruction
+
+
+def test_boundary_repair_instruction_uses_configured_prompt(tmp_path: Path) -> None:
+    result = BoundaryCheckResult(forbidden_modified=("README.md",))
+    problem = _make_problem(tmp_path)
+    config = _make_test_config(workspace_root=tmp_path / "run")
+    builder = SolverWorkspaceBuilder(
+        tmp_path / "solver_workspaces",
+        problem=problem,
+        config=config,
+        **_solver_workspace_builder_kwargs(config),
+    )
+
+    instruction = builder.boundary_repair_instruction(result)
+
+    assert instruction == phase2_boundary_repair_instruction(
+        result, _default_boundary_repair_prompt()
+    )
 
 
 def test_solver_workspace_embeds_check_agent_from_config(tmp_path: Path) -> None:
@@ -2117,10 +2136,9 @@ def test_solver_workspace_embeds_check_agent_from_config(tmp_path: Path) -> None
         tmp_path / "solver_workspaces",
         problem=problem,
         config=config,
-        instructions=_instruction_objects(config),
+        **_solver_workspace_builder_kwargs(config),
     )
     workspace, _ = builder.build({}, [], workspace_id="workspace-1")
-    builder.write_readme(workspace, "# README\n")
     claude_check = (workspace / ".claude" / "agents" / "check-runner.md").read_text(
         encoding="utf-8"
     )
@@ -2141,7 +2159,7 @@ def test_solver_workspace_name_uses_underscore_timestamp_format(tmp_path: Path) 
         tmp_path / "solver_workspaces",
         problem=problem,
         config=config,
-        instructions=_instruction_objects(config),
+        **_solver_workspace_builder_kwargs(config),
     )
 
     workspace, _ = builder.build({}, [], workspace_id="workspace-1")

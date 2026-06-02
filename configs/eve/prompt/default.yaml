@@ -1,9 +1,0 @@
-# @package _global_
-# Default Eve prompt parameters
-
-defaults:
-  - /prompt/phase2_readme: default
-  - /prompt/phase2_entrypoint: default
-  - /prompt/phase2_agent: default
-  - /prompt/rollout: default
-  - _self_

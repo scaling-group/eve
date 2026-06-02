@@ -12,23 +12,6 @@ from scaling_evolve.algorithms.eve.workflow.evaluation import build_solver_evalu
 
 _LOOP_CFG = {
     "n_workers_phase2": 1,
-    "instructions": {
-        "phase2_readme": {
-            "_target_": (
-                "scaling_evolve.algorithms.eve.instructions.default.Phase2ReadmeInstruction"
-            ),
-        },
-        "phase2_entrypoint": {
-            "_target_": (
-                "scaling_evolve.algorithms.eve.instructions.default.Phase2EntrypointInstruction"
-            ),
-        },
-        "phase2_agent": {
-            "_target_": (
-                "scaling_evolve.algorithms.eve.instructions.default.Phase2AgentInstruction"
-            ),
-        },
-    },
 }
 
 
@@ -45,6 +28,7 @@ def _make_cfg(run_root: Path, *, logger_cfg: dict | None = None) -> object:
         },
         "optimizer": {
             "initial_optimizer": None,
+            "immutable": "configs/eve/optimizer/circle_packing/immutable",
             "evaluation": {
                 "_target_": (
                     "scaling_evolve.algorithms.eve.populations.evaluators.elo.ScalarEloEvaluator"
@@ -406,11 +390,12 @@ def _compose_eve_config(config_name: str, overrides: list[str] | None = None):
 def test_icon_config_defaults() -> None:
     cfg = _compose_eve_config("icon")
 
-    assert cfg.prompt.phase2_readme._target_ == (
-        "scaling_evolve.algorithms.eve.instructions.icon.Phase2ReadmeInstruction"
-    )
-    assert cfg.prompt.phase2_readme.file_list[1] == (
-        "configs/eve/prompt/templates/icon/phase2_self_optimize_readme.md"
+    assert OmegaConf.select(cfg, "prompt") is None
+    assert cfg.optimizer.immutable == "configs/eve/optimizer/icon/immutable"
+    assert cfg.optimizer.prompt == "configs/eve/optimizer/icon/prompt"
+    assert (
+        cfg.optimizer.immutable_renderer._target_
+        == "scaling_evolve.algorithms.eve.workspace.immutable_renderers.default.DefaultRenderer"
     )
     assert cfg.loop.produce_optimizer_in_phase2 == cfg.loop.n_workers_phase2
 
@@ -434,12 +419,9 @@ def test_icon_smoke_config() -> None:
 def test_circle_packing_config_defaults() -> None:
     cfg = _compose_eve_config("circle_packing")
 
-    assert cfg.prompt.phase2_readme._target_ == (
-        "scaling_evolve.algorithms.eve.instructions.default.Phase2ReadmeInstruction"
-    )
-    assert cfg.prompt.phase2_readme.file_list[1] == (
-        "configs/eve/prompt/templates/built_in/phase2_self_optimize_readme.md"
-    )
+    assert OmegaConf.select(cfg, "prompt") is None
+    assert cfg.optimizer.immutable == "configs/eve/optimizer/circle_packing/immutable"
+    assert cfg.optimizer.prompt == "configs/eve/optimizer/circle_packing/prompt"
     assert cfg.loop.produce_optimizer_in_phase2 == cfg.loop.n_workers_phase2
 
 

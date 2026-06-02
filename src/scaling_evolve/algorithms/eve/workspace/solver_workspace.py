@@ -23,6 +23,9 @@ from scaling_evolve.algorithms.eve.workspace.file_tree import (
     write_file_tree,
     write_project_agent_definitions,
 )
+from scaling_evolve.algorithms.eve.workspace.immutable_renderers.default import (
+    DefaultRenderer,
+)
 
 
 class SolverWorkspaceBuilder:
@@ -34,7 +37,9 @@ class SolverWorkspaceBuilder:
         *,
         problem: RepoTaskProblem,
         config: DictConfig,
-        instructions: dict[str, object],
+        immutable_files: dict[str, str],
+        immutable_renderer: DefaultRenderer | None = None,
+        boundary_repair_prompt: str | None = None,
         rollout_prompts: dict[str, object] | None = None,
         rng: random.Random | None = None,
     ) -> None:
@@ -42,7 +47,17 @@ class SolverWorkspaceBuilder:
         self.workspace_root.mkdir(parents=True, exist_ok=True)
         self.problem = problem
         self.config = config
-        self.instructions = instructions
+        self.immutable_files = dict(immutable_files)
+        self.immutable_renderer = immutable_renderer or DefaultRenderer()
+        self.boundary_repair_prompt = boundary_repair_prompt
+        if self.immutable_files:
+            readme_template = self.immutable_files.get("README.md")
+            if readme_template is None:
+                raise ValueError(
+                    "immutable workspace assets must include README.md so EvE can inject "
+                    "Phase 2 runtime instructions."
+                )
+            self.immutable_renderer.validate(readme_template)
         self.rollout_prompts = rollout_prompts or {}
         self._rng = rng or random.Random()
         self.worker_index: int | None = None
@@ -151,15 +166,60 @@ class SolverWorkspaceBuilder:
 
         return ws, prefill_solver
 
-    def write_readme(self, workspace: Path, content: str) -> None:
-        """Persist the full Phase 2 README."""
-        (workspace / "README.md").write_text(content.strip() + "\n", encoding="utf-8")
+    def write_immutable_assets(
+        self,
+        workspace: Path,
+        *,
+        optimizer: PopulationEntry | None = None,
+        solvers: list[PopulationEntry],
+        prefill_solver: PopulationEntry,
+        optimizer_examples: list[PopulationEntry] | None = None,
+    ) -> None:
+        """Copy immutable assets into a Phase 2 workspace and render README."""
+        write_file_tree(workspace, self.immutable_files)
+        readme_path = workspace / "README.md"
+        if not readme_path.is_file():
+            raise ValueError(
+                "immutable workspace assets must include README.md so EvE can inject "
+                "Phase 2 runtime instructions."
+            )
+        rendered_readme = self.immutable_renderer.render(
+            readme_path.read_text(encoding="utf-8"),
+            problem=self.problem,
+            config=self.config,
+            optimizer=optimizer,
+            solvers=solvers,
+            prefill_solver=prefill_solver,
+            optimizer_examples=optimizer_examples,
+        )
+        readme_path.write_text(rendered_readme.strip() + "\n", encoding="utf-8")
 
-    def write_workspace_agent_instructions(self, workspace: Path, content: str) -> None:
-        """Persist workspace-root agent instruction files."""
-        payload = content.strip() + "\n"
-        for filename in ("AGENTS.md", "CLAUDE.md"):
-            (workspace / filename).write_text(payload, encoding="utf-8")
+    def entrypoint_instruction(
+        self,
+        *,
+        optimizer: PopulationEntry | None = None,
+        solvers: list[PopulationEntry],
+        prefill_solver: PopulationEntry,
+        optimizer_examples: list[PopulationEntry] | None = None,
+    ) -> str:
+        """Return the Phase 2 entrypoint instruction from the immutable renderer."""
+        return self.immutable_renderer.entrypoint(
+            problem=self.problem,
+            config=self.config,
+            optimizer=optimizer,
+            solvers=solvers,
+            prefill_solver=prefill_solver,
+            optimizer_examples=optimizer_examples,
+        )
+
+    def boundary_repair_instruction(self, boundary_result: object) -> str:
+        """Return the configured boundary-repair instruction plus runtime summary."""
+        if self.boundary_repair_prompt is None:
+            raise ValueError(
+                "prompt/BOUNDARY_REPAIR.md is required before EvE can repair boundary "
+                "violations. Load it from optimizer.prompt and pass it to the workspace builder."
+            )
+        return "\n".join([self.boundary_repair_prompt.strip(), "", boundary_result.summary()])
 
     def extract(self, workspace: Path) -> dict[str, str]:
         """Read the editable candidate files from workspace output/.

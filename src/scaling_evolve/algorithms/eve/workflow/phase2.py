@@ -56,15 +56,11 @@ class SolverWorkspaceEvaluation:
     evaluate_log_tree: dict[str, str]
 
 
-def phase2_boundary_repair_instruction(boundary_result: object) -> str:
+def phase2_boundary_repair_instruction(boundary_result: object, static_text: str) -> str:
     summary = boundary_result.summary()
     return "\n".join(
         [
-            "# Boundary Check Failed",
-            "",
-            "Your previous edit changed files outside the allowed editable surface.",
-            "Restore every forbidden change, then rerun the predefined `check-runner`",
-            "after each repair pass until it succeeds.",
+            static_text.strip(),
             "",
             summary,
         ]
@@ -148,24 +144,14 @@ class Phase2Runner:
             prefill_solver=self.prefill_solver,
             optimizer_examples=self.optimizer_examples,
         )
-        readme = self.solver_workspace_builder.instructions["phase2_readme"].render(
-            workspace_builder=self.solver_workspace_builder,
-            optimizer=self.optimizer,
-            solvers=self.solvers,
-            prefill_solver=self.prefill_solver,
-            optimizer_examples=self.optimizer_examples,
-        )
-        phase2_agent = self.solver_workspace_builder.instructions["phase2_agent"].render(
-            workspace_builder=self.solver_workspace_builder,
-            optimizer=self.optimizer,
-            solvers=self.solvers,
-            prefill_solver=self.prefill_solver,
-            optimizer_examples=self.optimizer_examples,
-        )
-        self.solver_workspace_builder.write_readme(workspace, readme)
-        self.solver_workspace_builder.write_workspace_agent_instructions(
+        if self.prefill_solver is None:
+            raise ValueError("Phase2Runner._build_workspace requires prefill_solver.")
+        self.solver_workspace_builder.write_immutable_assets(
             workspace,
-            phase2_agent,
+            optimizer=self.optimizer,
+            solvers=self.solvers,
+            prefill_solver=self.prefill_solver,
+            optimizer_examples=self.optimizer_examples,
         )
         self.workspace = workspace
 
@@ -178,11 +164,11 @@ class Phase2Runner:
         )
         rollout = self.driver.spawn(
             SessionSeed(
-                instruction=self.solver_workspace_builder.instructions["phase2_entrypoint"].render(
-                    workspace_builder=self.solver_workspace_builder,
+                instruction=self.solver_workspace_builder.entrypoint_instruction(
                     optimizer=self.optimizer,
                     solvers=self.solvers,
                     prefill_solver=self.prefill_solver,
+                    optimizer_examples=self.optimizer_examples,
                 ),
                 working_directory=str(self.workspace),
                 prompt_file="README.md",
@@ -203,7 +189,9 @@ class Phase2Runner:
             repair_attempts += 1
             rollout = self.driver.resume(
                 rollout.state,
-                instruction=phase2_boundary_repair_instruction(boundary_result),
+                instruction=self.solver_workspace_builder.boundary_repair_instruction(
+                    boundary_result
+                ),
             )
             self.optimize_rollouts.append(rollout)
             boundary_result = self.solver_evaluator.check_boundary(

@@ -1,3 +1,5 @@
+Read `README.md` first and follow it. Work only inside this phase workspace.
+
 =================VERY IMPORTANT RULE BELOW!!!=====================================
 Don't keep improving forever. Once you think code is runnable and `check-runner` passed, STOP IMMEDIATELY, but only after one of these is true:
 1. you made at least one research-bearing delta that is meaningfully distinct from the copied prefill solver, or

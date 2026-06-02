@@ -3,18 +3,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from importlib.resources import files
 from pathlib import Path
 from typing import Protocol
 
-
-def _read_prompt_text(path: str) -> str:
-    return (
-        files("scaling_evolve.algorithms.eve.rollout_prompts")
-        .joinpath(*path.split("/"))
-        .read_text(encoding="utf-8")
-        .strip()
-    )
+from scaling_evolve.algorithms.eve.prompt_assets import read_required_prompt_text
 
 
 @dataclass(frozen=True)
@@ -43,19 +35,20 @@ class _BaseRolloutPrompt:
     def __init__(
         self,
         *,
+        prompt_root: Path,
         system_files: tuple[str, ...] = (),
         user_files: tuple[str, ...] = (),
         turn_files: tuple[str, ...] = (),
     ) -> None:
+        self._prompt_root = prompt_root
         self._system_template = self._compose(system_files)
         self._user_template = self._compose(user_files)
         self._turn_template = self._compose(turn_files)
 
-    @staticmethod
-    def _compose(paths: tuple[str, ...]) -> str:
+    def _compose(self, paths: tuple[str, ...]) -> str:
         if not paths:
             return ""
-        parts = [_read_prompt_text(path) for path in paths]
+        parts = [read_required_prompt_text(self._prompt_root, path) for path in paths]
         return "\n\n".join(part for part in parts if part).strip()
 
     def system(self, ctx: PromptContext) -> str | None:
@@ -88,10 +81,11 @@ class _BaseRolloutPrompt:
 class BudgetPrompt(_BaseRolloutPrompt):
     """Announce the turn budget and report remaining turns each turn."""
 
-    def __init__(self) -> None:
+    def __init__(self, *, prompt_root: Path) -> None:
         super().__init__(
-            user_files=("default/budget_user.md",),
-            turn_files=("default/budget_turn.md",),
+            prompt_root=prompt_root,
+            user_files=("budget/USER.md",),
+            turn_files=("budget/TURN.md",),
         )
 
     def user(self, ctx: PromptContext) -> str | None:

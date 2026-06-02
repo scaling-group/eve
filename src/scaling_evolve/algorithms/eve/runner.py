@@ -181,6 +181,7 @@ def run(cfg: DictConfig) -> None:
             optimizer_driver=drivers.optimizer_driver,
             logger=run_logger,
             task_problem=problem,
+            search_root=repo_root,
         ) as factory:
             if not restore_sources:
                 factory.seed_initial_optimizer(search_root=repo_root)
