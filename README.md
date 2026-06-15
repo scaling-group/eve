@@ -6,7 +6,7 @@
 
 ### **A decentralized ensemble of coding agents co-evolving with code repositories.**
 
-[![python](https://img.shields.io/badge/-Python_3.13-blue?logo=python&logoColor=white)](https://www.python.org/)
+[![python](https://img.shields.io/badge/-Python_≥3.11-blue?logo=python&logoColor=white)](https://www.python.org/)
 [![hydra](https://img.shields.io/badge/Config-Hydra_1.3-89b8cd)](https://hydra.cc/)
 [![ruff](https://img.shields.io/badge/Code%20Style-Ruff-orange.svg?labelColor=gray)](https://docs.astral.sh/ruff/)<br>
 [![arXiv](https://img.shields.io/badge/arXiv-2605.09018-b31b1b.svg)](https://arxiv.org/abs/2605.09018)
@@ -66,7 +66,7 @@ Both agents support two modes:
 Agents can be powered in two ways:
 
 - **Subscription**: Codex is included with a ChatGPT subscription; Claude Code is included with a Claude subscription. No API key needed.
-- **API**: Both agents also support pay-per-token API access. Third-party providers (DeepSeek, OpenRouter) are supported through provider routing.
+- **API**: Both agents also support pay-per-token API access. Third-party providers (e.g. OpenRouter) are supported through provider routing.
 
 > [!IMPORTANT]
 > EvE orchestrates third-party coding agents; it does **not** provide unlimited access to any AI service.
