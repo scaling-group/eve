@@ -19,7 +19,8 @@ artifacts/
 !.env.example
 .experiment-claude-config/
 .claude-driver-transcripts/
-.codex/
+.codex/*
+!.codex/skills
 *.o*
 /wandb/
 
