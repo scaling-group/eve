@@ -14,6 +14,9 @@ from scaling_evolve.algorithms.eve.populations.entry import PopulationEntry
 from scaling_evolve.algorithms.eve.workflow.evaluation import SolverEvaluator
 from scaling_evolve.algorithms.eve.workflow.phase2 import Phase2BatchRunner
 from scaling_evolve.algorithms.eve.workflow.phase3 import score_optimizers
+from scaling_evolve.algorithms.eve.workspace.evaluation_workspace import (
+    EvaluationWorkspaceBuilder,
+)
 from scaling_evolve.algorithms.eve.workspace.solver_workspace import (
     SolverWorkspaceBuilder,
 )
@@ -31,6 +34,7 @@ class Eve:
         solver_pop: Population,
         optimizer_pop: Population,
         solver_workspace_builder: SolverWorkspaceBuilder,
+        evaluation_workspace_builder: EvaluationWorkspaceBuilder,
         solver_driver: SessionDriver,
         optimizer_driver: SessionDriver,
         solver_evaluator: SolverEvaluator,
@@ -46,6 +50,7 @@ class Eve:
         self.solver_pop = solver_pop
         self.optimizer_pop = optimizer_pop
         self.solver_workspace_builder = solver_workspace_builder
+        self.evaluation_workspace_builder = evaluation_workspace_builder
         self.solver_driver = solver_driver
         self.optimizer_driver = optimizer_driver
         self.solver_evaluator = solver_evaluator
@@ -69,6 +74,7 @@ class Eve:
 
             phase2_batch_runner = Phase2BatchRunner(
                 solver_workspace_builder=self.solver_workspace_builder,
+                evaluation_workspace_builder=self.evaluation_workspace_builder,
                 driver=self.solver_driver,
                 solver_evaluator=self.solver_evaluator,
                 step_label=self._step_log_dir(step),
@@ -126,6 +132,7 @@ class Eve:
             workspace=workspace,
             seed_solver_id=seed_solver_id,
             solver_workspace_builder=self.solver_workspace_builder,
+            evaluation_workspace_builder=self.evaluation_workspace_builder,
         )
         self.solver_pop.add(seed_entry)
         _LOGGER.info("Seeded solver population with %s", seed_solver_id)

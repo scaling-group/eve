@@ -41,6 +41,9 @@ from scaling_evolve.algorithms.eve.workflow.phase2 import (
     phase2_boundary_repair_instruction,
 )
 from scaling_evolve.algorithms.eve.workflow.phase3 import score_optimizers
+from scaling_evolve.algorithms.eve.workspace.evaluation_workspace import (
+    EvaluationWorkspaceBuilder,
+)
 from scaling_evolve.algorithms.eve.workspace.file_tree import read_file_tree
 from scaling_evolve.algorithms.eve.workspace.immutable_renderers.default import (
     DefaultRenderer,
@@ -332,6 +335,7 @@ def _make_loop(
         solver_pop=solver_pop,  # type: ignore[arg-type]
         optimizer_pop=optimizer_pop,  # type: ignore[arg-type]
         solver_workspace_builder=solver_workspace_builder,
+        evaluation_workspace_builder=EvaluationWorkspaceBuilder(tmp_path / "evaluation_workspaces"),
         solver_driver=object(),  # type: ignore[arg-type]
         optimizer_driver=object(),  # type: ignore[arg-type]
         solver_evaluator=solver_evaluator,
@@ -377,6 +381,46 @@ def _make_solver_evaluator(problem: RepoTaskProblem, *, eval_fn) -> object:
     return evaluator
 
 
+def test_evaluation_workspace_builder_copies_candidate_snapshot_and_logs(
+    tmp_path: Path,
+) -> None:
+    solver_workspace = tmp_path / "solver_workspaces" / "candidate-1"
+    (solver_workspace / "output").mkdir(parents=True)
+    (solver_workspace / "logs" / "evaluate").mkdir(parents=True)
+    (solver_workspace / "output" / "candidate.py").write_text(
+        "print('candidate')\n", encoding="utf-8"
+    )
+    (solver_workspace / "logs" / "evaluate" / "old.txt").write_text("old eval\n", encoding="utf-8")
+    builder = EvaluationWorkspaceBuilder(
+        tmp_path / "evaluation_workspaces",
+        immutable_files={"README.md": "# Evaluation\n"},
+    )
+
+    eval_workspace = builder.build(
+        solver_workspace,
+        optimize_logs={"agent-note.txt": "agent log\n"},
+    )
+    (eval_workspace / "stale.txt").write_text("stale\n", encoding="utf-8")
+    (solver_workspace / "output" / "candidate.py").write_text(
+        "print('updated')\n", encoding="utf-8"
+    )
+    rebuilt = builder.build(
+        solver_workspace,
+        optimize_logs={"agent-note.txt": "new log\n"},
+    )
+
+    assert rebuilt == tmp_path / "evaluation_workspaces" / solver_workspace.name
+    assert (rebuilt / "output" / "candidate.py").read_text(encoding="utf-8") == (
+        "print('updated')\n"
+    )
+    assert (rebuilt / "logs" / "evaluate" / "old.txt").read_text(encoding="utf-8") == ("old eval\n")
+    assert (rebuilt / "logs" / "optimize" / "agent-note.txt").read_text(
+        encoding="utf-8"
+    ) == "new log\n"
+    assert (rebuilt / "README.md").read_text(encoding="utf-8") == "# Evaluation\n"
+    assert not (rebuilt / "stale.txt").exists()
+
+
 def test_seed_solver_evaluates_by_default(tmp_path: Path) -> None:
     calls: list[Path] = []
 
@@ -390,6 +434,7 @@ def test_seed_solver_evaluates_by_default(tmp_path: Path) -> None:
 
     assert created == 1
     assert len(calls) == 1
+    assert calls[0].parent == tmp_path / "evaluation_workspaces"
     assert len(solver_pop.entries) == 1
     assert solver_pop.entries[0].score["score"] == 1.25
     assert "evaluate/summary.txt" in solver_pop.entries[0].logs
@@ -412,6 +457,7 @@ def test_seed_solver_score_does_not_bypass_seed_evaluation_by_itself(tmp_path: P
 
     assert created == 1
     assert len(calls) == 1
+    assert calls[0].parent == tmp_path / "evaluation_workspaces"
     assert len(solver_pop.entries) == 1
     assert solver_pop.entries[0].score["score"] == 9.0
     assert solver_pop.entries[0].logs["evaluate/summary.txt"] == "eval ran\n"
@@ -690,16 +736,19 @@ def test_phase2_workspace_logs_are_direct_and_optimizer_history_uses_iteration_s
             "evaluate/summary.txt": "seed summary",
         },
     )
+    eval_calls: list[Path] = []
+
+    def eval_fn(workspace_root: Path, display_context=None):  # noqa: ARG001
+        eval_calls.append(workspace_root)
+        return _score(1.0), {"summary.txt": "evaluation summary"}
 
     result = Phase2Runner(
         solver_workspace_builder=solver_workspace_builder,
+        evaluation_workspace_builder=EvaluationWorkspaceBuilder(tmp_path / "evaluation_workspaces"),
         driver=driver,
         solver_evaluator=_make_solver_evaluator(
             problem,
-            eval_fn=lambda files, display_context=None: (
-                _score(1.0),
-                {"summary.txt": "evaluation summary"},
-            ),
+            eval_fn=eval_fn,
         ),
         step_label="step_3",
         iteration=3,
@@ -725,6 +774,11 @@ def test_phase2_workspace_logs_are_direct_and_optimizer_history_uses_iteration_s
     assert f"{step_root}/score.yaml" in result.optimizer_log_tree
     assert "solver_id:" in result.optimizer_log_tree[f"{step_root}/score.yaml"]
     workspace = next((tmp_path / "solver_workspaces").glob("*"))
+    eval_workspace = next((tmp_path / "evaluation_workspaces").glob("*"))
+    assert eval_calls == [eval_workspace]
+    assert eval_workspace.name == workspace.name
+    assert (eval_workspace / "output" / "candidate.py").exists()
+    assert (eval_workspace / "logs" / "optimize" / "agent-note.txt").exists()
     assert driver.spawn_instructions == [
         solver_workspace_builder.entrypoint_instruction(
             optimizer=optimizer,
@@ -783,6 +837,7 @@ def test_phase2_can_produce_optimizer_when_configured(tmp_path: Path) -> None:
 
     result = Phase2Runner(
         solver_workspace_builder=solver_workspace_builder,
+        evaluation_workspace_builder=EvaluationWorkspaceBuilder(tmp_path / "evaluation_workspaces"),
         driver=driver,
         solver_evaluator=_make_solver_evaluator(
             problem,
@@ -849,6 +904,7 @@ def test_phase2_skips_optimizer_candidate_when_guidance_is_unchanged(
 
     result = Phase2Runner(
         solver_workspace_builder=solver_workspace_builder,
+        evaluation_workspace_builder=EvaluationWorkspaceBuilder(tmp_path / "evaluation_workspaces"),
         driver=_FakeDriver(),
         solver_evaluator=_make_solver_evaluator(
             problem,
@@ -934,6 +990,7 @@ def test_phase2_batch_adds_configured_optimizer_candidate(tmp_path: Path) -> Non
 
     results = Phase2BatchRunner(
         solver_workspace_builder=solver_workspace_builder,
+        evaluation_workspace_builder=EvaluationWorkspaceBuilder(tmp_path / "evaluation_workspaces"),
         driver=driver,
         solver_evaluator=_make_solver_evaluator(
             problem,
@@ -1118,6 +1175,7 @@ def test_phase2_batch_reuses_same_optimizer_examples_for_all_workers(
 
     Phase2BatchRunner(
         solver_workspace_builder=solver_workspace_builder,
+        evaluation_workspace_builder=EvaluationWorkspaceBuilder(tmp_path / "evaluation_workspaces"),
         driver=_FakeDriver(),
         solver_evaluator=_make_solver_evaluator(
             problem,
@@ -1251,6 +1309,7 @@ def test_phase2_batch_samples_produced_optimizers_when_configured(
 
     results = Phase2BatchRunner(
         solver_workspace_builder=solver_workspace_builder,
+        evaluation_workspace_builder=EvaluationWorkspaceBuilder(tmp_path / "evaluation_workspaces"),
         driver=_FakeDriver(),
         solver_evaluator=_make_solver_evaluator(
             problem,
@@ -1388,6 +1447,7 @@ def test_phase2_system_prompt_omits_removed_important_message(tmp_path: Path) ->
 
     Phase2Runner(
         solver_workspace_builder=solver_workspace_builder,
+        evaluation_workspace_builder=EvaluationWorkspaceBuilder(tmp_path / "evaluation_workspaces"),
         driver=driver,
         solver_evaluator=_make_solver_evaluator(
             problem,
@@ -1438,6 +1498,7 @@ def test_phase2_runner_writes_rollout_prompt_specs_into_workspace(tmp_path: Path
 
     Phase2Runner(
         solver_workspace_builder=solver_workspace_builder,
+        evaluation_workspace_builder=EvaluationWorkspaceBuilder(tmp_path / "evaluation_workspaces"),
         driver=driver,
         solver_evaluator=_make_solver_evaluator(
             problem,
@@ -2448,6 +2509,7 @@ def test_phase2_batch_reraises_transport_halt(tmp_path: Path, monkeypatch) -> No
 
     batch_runner = Phase2BatchRunner(
         solver_workspace_builder=SimpleNamespace(_rng=random.Random(1)),
+        evaluation_workspace_builder=EvaluationWorkspaceBuilder(tmp_path / "evaluation_workspaces"),
         driver=object(),
         solver_evaluator=object(),
         step_label="step_1",

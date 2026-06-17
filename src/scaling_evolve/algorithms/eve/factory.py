@@ -23,6 +23,7 @@ The factory constructs:
   - Two population instances (SolverPopulation + OptimizerPopulation)
     each backed by their own SQLiteLineageStore + FSArtifactStore
   - SolverWorkspaceBuilder
+  - EvaluationWorkspaceBuilder
   - Eve
 
 LocalWorkspaceManager is not used. Workspace directories are created directly
@@ -55,6 +56,10 @@ from scaling_evolve.algorithms.eve.runtime.restore import (
 )
 from scaling_evolve.algorithms.eve.workflow.evaluation import SolverEvaluator
 from scaling_evolve.algorithms.eve.workflow.loop import Eve
+from scaling_evolve.algorithms.eve.workspace.evaluation_workspace import (
+    EVALUATION_WORKSPACES_DIRNAME,
+    EvaluationWorkspaceBuilder,
+)
 from scaling_evolve.algorithms.eve.workspace.file_tree import read_file_tree
 from scaling_evolve.algorithms.eve.workspace.solver_workspace import (
     SolverWorkspaceBuilder,
@@ -248,12 +253,16 @@ class EveFactory:
             boundary_repair_prompt=boundary_repair_prompt,
             rollout_prompts=rollout_prompts,
         )
+        evaluation_workspace_builder = EvaluationWorkspaceBuilder(
+            workspace_root / EVALUATION_WORKSPACES_DIRNAME
+        )
 
         # --- Loop ---
         loop = Eve(
             solver_pop=solver_pop,
             optimizer_pop=optimizer_pop,
             solver_workspace_builder=solver_workspace_builder,
+            evaluation_workspace_builder=evaluation_workspace_builder,
             solver_driver=solver_driver,
             optimizer_driver=optimizer_driver,
             solver_evaluator=solver_evaluator,

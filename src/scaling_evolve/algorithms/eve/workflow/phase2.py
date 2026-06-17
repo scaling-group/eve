@@ -20,6 +20,9 @@ from scaling_evolve.algorithms.eve.workflow.evaluation import (
 from scaling_evolve.algorithms.eve.workflow.optimize_logs import (
     build_optimize_log_tree,
 )
+from scaling_evolve.algorithms.eve.workspace.evaluation_workspace import (
+    EvaluationWorkspaceBuilder,
+)
 from scaling_evolve.algorithms.eve.workspace.runtime_hooks import (
     install_workspace_runtime_hooks,
 )
@@ -72,6 +75,7 @@ class Phase2Runner:
         self,
         *,
         solver_workspace_builder: SolverWorkspaceBuilder,
+        evaluation_workspace_builder: EvaluationWorkspaceBuilder,
         driver: SessionDriver,
         solver_evaluator: SolverEvaluator,
         step_label: str,
@@ -80,6 +84,7 @@ class Phase2Runner:
         optimizer_pop: object | None = None,
     ) -> None:
         self.solver_workspace_builder = solver_workspace_builder
+        self.evaluation_workspace_builder = evaluation_workspace_builder
         self.driver = driver
         self.solver_evaluator = solver_evaluator
         self.step_label = step_label
@@ -250,8 +255,12 @@ class Phase2Runner:
             solver_id,
         )
         candidate_files = self.solver_workspace_builder.extract(workspace_root)
+        eval_workspace = self.evaluation_workspace_builder.build(
+            workspace_root,
+            optimize_logs=optimize_logs,
+        )
         score, evaluate_log_tree = self.solver_evaluator.evaluate_candidate(
-            workspace_root=workspace_root,
+            workspace_root=eval_workspace,
             boundary_result=boundary_result,
             display_context={"iteration": self.iteration, "worker_index": worker_index},
         )
@@ -392,6 +401,7 @@ class Phase2BatchRunner:
         self,
         *,
         solver_workspace_builder: SolverWorkspaceBuilder,
+        evaluation_workspace_builder: EvaluationWorkspaceBuilder,
         driver: SessionDriver,
         solver_evaluator: SolverEvaluator,
         step_label: str,
@@ -410,6 +420,7 @@ class Phase2BatchRunner:
         produced_optimizer_sampler: object,
     ) -> None:
         self.solver_workspace_builder = solver_workspace_builder
+        self.evaluation_workspace_builder = evaluation_workspace_builder
         self.driver = driver
         self.solver_evaluator = solver_evaluator
         self.step_label = step_label
@@ -440,6 +451,7 @@ class Phase2BatchRunner:
                 pool.submit(
                     Phase2Runner(
                         solver_workspace_builder=self.solver_workspace_builder,
+                        evaluation_workspace_builder=self.evaluation_workspace_builder,
                         driver=self.driver,
                         solver_evaluator=self.solver_evaluator,
                         step_label=self.step_label,

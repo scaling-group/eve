@@ -131,6 +131,7 @@ class SolverEvaluator:
         workspace: Path,
         seed_solver_id: str,
         solver_workspace_builder: object,
+        evaluation_workspace_builder: object,
     ) -> tuple[PopulationEntry, bool]:
         if self.seed_solver_skip_evaluation:
             if self.seed_solver_score is None:
@@ -150,8 +151,9 @@ class SolverEvaluator:
                 False,
             )
 
+        eval_workspace = evaluation_workspace_builder.build(workspace, optimize_logs={})
         score, evaluate_logs = self.evaluate(
-            workspace,
+            eval_workspace,
             display_context={"iteration": 0, "worker_index": 0},
         )
         candidate_files = solver_workspace_builder.extract(workspace)
