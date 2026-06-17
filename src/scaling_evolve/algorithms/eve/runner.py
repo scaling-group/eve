@@ -178,7 +178,6 @@ def run(cfg: DictConfig) -> None:
             run_config,
             solver_evaluator,
             solver_driver=drivers.solver_driver,
-            optimizer_driver=drivers.optimizer_driver,
             logger=run_logger,
             task_problem=problem,
             search_root=repo_root,
@@ -231,7 +230,7 @@ def _driver_config_uses_codex(driver_cfg: object) -> bool:
         return False
     return any(
         _driver_name(_driver_cfg_for_role(driver_cfg, role)) in {"codex_exec", "codex_tmux"}
-        for role in ("solver", "eval", "optimizer")
+        for role in ("solver", "eval")
     )
 
 

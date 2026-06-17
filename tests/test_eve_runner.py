@@ -61,7 +61,6 @@ def test_runner_closes_drivers_when_logger_instantiate_fails(monkeypatch, tmp_pa
         def __init__(self) -> None:
             self.eval_driver_factory = lambda: None
             self.solver_driver = object()
-            self.optimizer_driver = object()
 
         def close(self) -> None:
             nonlocal close_called
@@ -102,7 +101,6 @@ def test_runner_instantiates_logger_non_recursively(monkeypatch, tmp_path: Path)
         def __init__(self) -> None:
             self.eval_driver_factory = lambda: None
             self.solver_driver = object()
-            self.optimizer_driver = object()
 
         def close(self) -> None:
             return None
@@ -170,7 +168,6 @@ def test_runner_skips_finish_when_logger_group_returns_none(monkeypatch, tmp_pat
         def __init__(self) -> None:
             self.eval_driver_factory = lambda: None
             self.solver_driver = object()
-            self.optimizer_driver = object()
 
         def close(self) -> None:
             return None
@@ -228,7 +225,6 @@ def test_runner_logs_and_exits_on_remote_transport_halt(
         def __init__(self) -> None:
             self.eval_driver_factory = lambda: None
             self.solver_driver = object()
-            self.optimizer_driver = object()
 
         def close(self) -> None:
             return None
@@ -296,7 +292,6 @@ def test_runner_skips_optimizer_seed_when_restoring_from_prior_run(
         def __init__(self) -> None:
             self.eval_driver_factory = lambda: None
             self.solver_driver = object()
-            self.optimizer_driver = object()
 
         def close(self) -> None:
             return None

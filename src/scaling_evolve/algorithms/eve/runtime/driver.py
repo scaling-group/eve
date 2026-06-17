@@ -24,7 +24,7 @@ from scaling_evolve.providers.agent.drivers.codex_tmux import (
 from scaling_evolve.providers.agent.drivers.factory import build_claude_code_session_driver
 from scaling_evolve.providers.agent.tmux_runtime import open_iterm2_window_for_session
 
-_ROLE_NAMES = ("solver", "eval", "optimizer")
+_ROLE_NAMES = ("solver", "eval")
 
 
 @dataclass(frozen=True)
@@ -32,7 +32,6 @@ class EveDriverSet:
     """Resolved role-specific drivers for one Eve run."""
 
     solver_driver: SessionDriver
-    optimizer_driver: SessionDriver
     eval_driver_factory: Callable[[], SessionDriver]
     pane_pool: CodexTmuxPanePool | None = None
 
@@ -145,13 +144,6 @@ def build_role_drivers(
         pane_pool=pane_pool,
         pricing_table=pricing_table,
     )
-    optimizer_driver = build_driver(
-        driver_cfg,
-        role="optimizer",
-        run_root=run_root,
-        pane_pool=pane_pool,
-        pricing_table=pricing_table,
-    )
     eval_driver_factory = build_driver_factory(
         driver_cfg,
         role="eval",
@@ -161,7 +153,6 @@ def build_role_drivers(
     )
     return EveDriverSet(
         solver_driver=solver_driver,
-        optimizer_driver=optimizer_driver,
         eval_driver_factory=eval_driver_factory,
         pane_pool=pane_pool,
     )

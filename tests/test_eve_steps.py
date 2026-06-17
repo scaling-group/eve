@@ -333,7 +333,6 @@ def _make_loop(
         optimizer_pop=optimizer_pop,  # type: ignore[arg-type]
         solver_workspace_builder=solver_workspace_builder,
         solver_driver=object(),  # type: ignore[arg-type]
-        optimizer_driver=object(),  # type: ignore[arg-type]
         solver_evaluator=solver_evaluator,
         config=config,
         optimizer_evaluator=ScalarEloEvaluator(),

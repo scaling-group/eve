@@ -32,7 +32,6 @@ class Eve:
         optimizer_pop: Population,
         solver_workspace_builder: SolverWorkspaceBuilder,
         solver_driver: SessionDriver,
-        optimizer_driver: SessionDriver,
         solver_evaluator: SolverEvaluator,
         config: DictConfig,
         optimizer_evaluator: object,
@@ -47,7 +46,6 @@ class Eve:
         self.optimizer_pop = optimizer_pop
         self.solver_workspace_builder = solver_workspace_builder
         self.solver_driver = solver_driver
-        self.optimizer_driver = optimizer_driver
         self.solver_evaluator = solver_evaluator
         self.config = config
         self.optimizer_evaluator = optimizer_evaluator

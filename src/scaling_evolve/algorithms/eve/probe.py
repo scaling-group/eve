@@ -27,15 +27,6 @@ _SOLVER_PROBE_ENTRYPOINT = "\n".join(
         "write the required completion file, and stop immediately.",
     ]
 )
-_OPTIMIZER_PROBE_ENTRYPOINT = "\n".join(
-    [
-        "Read `README.md` first.",
-        "This is an optimizer smoke probe, not a full optimization run.",
-        "Inspect the reference example directories, `guidance/`, and `output/`.",
-        "Make one tiny documentation improvement inside `output/`,",
-        "write the required completion file, and stop immediately.",
-    ]
-)
 _EVAL_PROBE_ENTRYPOINT = "\n".join(
     [
         "This is an evaluation smoke probe.",
@@ -61,7 +52,7 @@ def main(argv: list[str] | None = None) -> int:
     load_dotenv()
 
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--agent", choices=("solver", "eval", "optimizer"), required=True)
+    parser.add_argument("--agent", choices=("solver", "eval"), required=True)
     parser.add_argument("--config", required=True)
     parser.add_argument("overrides", nargs="*")
     args = parser.parse_args(argv)
@@ -87,8 +78,6 @@ def main(argv: list[str] | None = None) -> int:
     try:
         if args.agent == "solver":
             payload = _probe_solver(run_root / "solver_probe", drivers.solver_driver)
-        elif args.agent == "optimizer":
-            payload = _probe_optimizer(run_root / "optimizer_probe", drivers.optimizer_driver)
         else:
             payload = _probe_eval(run_root / "eval_probe", drivers.eval_driver_factory())
     finally:
@@ -173,50 +162,6 @@ def _probe_solver(workspace: Path, driver) -> dict[str, object]:
         "changed_paths": rollout.changed_paths,
         "completion_path": rollout.state.metadata.get("completion_path"),
         "candidate": (workspace / "output" / "candidate.py").read_text(encoding="utf-8"),
-        "pane_pool_session_name": rollout.state.metadata.get("pane_pool_session_name"),
-    }
-
-
-def _probe_optimizer(workspace: Path, driver) -> dict[str, object]:
-    if workspace.exists():
-        shutil.rmtree(workspace)
-    (workspace / "guidance").mkdir(parents=True)
-    (workspace / "examples" / "optimizer-a").mkdir(parents=True)
-    (workspace / "output").mkdir(parents=True)
-    _write(
-        workspace / "README.md",
-        "\n".join(
-            [
-                "# Optimizer Probe",
-                "",
-                "- Edit only files under `output/`.",
-                "- Keep changes tiny and documentation-focused.",
-            ]
-        )
-        + "\n",
-    )
-    _write(workspace / "guidance" / "notes.md", "# Probe Guidance\nPrefer clarity.\n")
-    _write(
-        workspace / "examples" / "optimizer-a" / "APPROACH.md",
-        "# Reference\nUse quick checks.\n",
-    )
-    _write(workspace / "output" / "APPROACH.md", "# Approach\nStart simple.\n")
-
-    rollout = driver.spawn(
-        SessionSeed(
-            instruction=_OPTIMIZER_PROBE_ENTRYPOINT,
-            workspace=_workspace_lease(workspace, target_repo_root=workspace / "output"),
-            prompt_file="README.md",
-            write_prompt_file=False,
-        )
-    )
-    return {
-        "agent": "optimizer",
-        "workspace": str(workspace),
-        "summary": rollout.summary,
-        "changed_paths": rollout.changed_paths,
-        "completion_path": rollout.state.metadata.get("completion_path"),
-        "approach": (workspace / "output" / "APPROACH.md").read_text(encoding="utf-8"),
         "pane_pool_session_name": rollout.state.metadata.get("pane_pool_session_name"),
     }
 

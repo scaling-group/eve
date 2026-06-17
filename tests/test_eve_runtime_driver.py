@@ -132,7 +132,7 @@ def test_build_role_drivers_injects_model_provider_env(monkeypatch, tmp_path: Pa
     drivers.close()
 
 
-def test_build_role_drivers_creates_shared_pool_for_claude_tmux_override(
+def test_build_role_drivers_creates_shared_pool_for_eval_claude_tmux_override(
     monkeypatch,
     tmp_path: Path,
 ) -> None:
@@ -170,7 +170,7 @@ def test_build_role_drivers_creates_shared_pool_for_claude_tmux_override(
             "model": "gpt-5.4-mini",
             "open_iterm2": True,
             "overrides": {
-                "optimizer": {
+                "eval": {
                     "provider": "claude_code_tmux",
                     "model": "claude-sonnet-4-6",
                 }
@@ -181,7 +181,7 @@ def test_build_role_drivers_creates_shared_pool_for_claude_tmux_override(
     )
 
     assert isinstance(drivers.solver_driver, CodexTmuxSessionDriver)
-    assert isinstance(drivers.optimizer_driver, ClaudeCodeTmuxSessionDriver)
+    assert isinstance(drivers.eval_driver_factory(), ClaudeCodeTmuxSessionDriver)
     assert drivers.pane_pool is not None
     assert opened == ["mixed-pool-test"]
     drivers.close()

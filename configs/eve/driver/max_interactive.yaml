@@ -21,5 +21,3 @@ driver:
     eval:
       model: gpt-5.4
       reasoning_effort: xhigh
-    optimizer:
-      reasoning_effort: xhigh

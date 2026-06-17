@@ -18,5 +18,3 @@ driver:
     eval:
       model: haiku
       effort_level: low
-    optimizer:
-      effort_level: medium
