@@ -150,7 +150,6 @@ class EveFactory:
         solver_evaluator: SolverEvaluator,
         *,
         solver_driver: SessionDriver,
-        optimizer_driver: SessionDriver,
         logger: EveLogger | None = None,
         task_problem: RepoTaskProblem | None = None,
         search_root: Path | None = None,
@@ -161,7 +160,6 @@ class EveFactory:
             config: fully populated DictConfig.
             solver_evaluator: assembled solver evaluator.
             solver_driver: pre-built solver session driver.
-            optimizer_driver: pre-built optimizer session driver.
 
         Returns:
             Assembled EveFactory.
@@ -255,7 +253,6 @@ class EveFactory:
             optimizer_pop=optimizer_pop,
             solver_workspace_builder=solver_workspace_builder,
             solver_driver=solver_driver,
-            optimizer_driver=optimizer_driver,
             solver_evaluator=solver_evaluator,
             config=loop_cfg,
             optimizer_evaluator=optimizer_evaluator,

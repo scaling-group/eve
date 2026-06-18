@@ -1,5 +1,5 @@
 # @package _global_
-# Mixed driver: Codex for solver/eval, Claude for optimizer
+# Legacy mixed driver name; active solver/eval roles use Codex.
 
 driver:
   provider: codex_tmux
@@ -18,9 +18,3 @@ driver:
     eval:
       model: gpt-5.4-mini
       reasoning_effort: low
-    optimizer:
-      provider: claude_code_tmux
-      executable: claude
-      model: sonnet
-      effort_level: medium
-      dangerously_skip_permissions: true

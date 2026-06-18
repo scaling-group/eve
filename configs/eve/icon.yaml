@@ -21,8 +21,6 @@ driver:
   overrides:
     solver:
       reasoning_effort: medium
-    optimizer:
-      reasoning_effort: medium
 
 logger:
   project: eve-icon
