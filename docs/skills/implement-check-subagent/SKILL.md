@@ -14,10 +14,10 @@ For a concrete application example, refer to:
 
 ## What to include in the subagent file
 
-Keep in mind that the check subagent is expected to run from `workspace/output/`, i.e. the downstream task repository.
+Keep in mind that the check subagent is expected to run from `workspace/solver/`, i.e. the downstream task repository.
 The implemented subagent file should in general provide:
 
-1. A sanity check command sequence that runs inside `workspace/output/`. Follow the application pattern from the examples, for example:
+1. A sanity check command sequence that runs inside `workspace/solver/`. Follow the application pattern from the examples, for example:
    - syntax validation
    - fast smoke runs
 

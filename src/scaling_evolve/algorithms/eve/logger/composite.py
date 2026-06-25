@@ -42,3 +42,17 @@ class CompositeEveLogger(EveLogger):
                 optimizer_entries=optimizer_entries,
                 iterations_completed=iterations_completed,
             )
+
+    def write_resume_anchor_summary(
+        self,
+        *,
+        solver_entries: list[PopulationEntry],
+        optimizer_entries: list[PopulationEntry],
+        iterations_completed: int,
+    ) -> None:
+        for logger in self._loggers:
+            logger.write_resume_anchor_summary(
+                solver_entries=solver_entries,
+                optimizer_entries=optimizer_entries,
+                iterations_completed=iterations_completed,
+            )

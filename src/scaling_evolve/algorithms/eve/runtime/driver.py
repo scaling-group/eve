@@ -26,6 +26,10 @@ from scaling_evolve.providers.agent.tmux_runtime import open_iterm2_window_for_s
 
 _ROLE_NAMES = ("solver", "eval")
 
+# Repo root, used to resolve repo-relative asset paths in driver config (e.g.
+# `system_prompt_file`) the same way application assets are resolved.
+_REPO_ROOT = Path(__file__).resolve().parents[5]
+
 
 @dataclass(frozen=True)
 class EveDriverSet:
@@ -188,12 +192,14 @@ def _build_codex_tmux_driver(
         ),
         rollout_max_turns=_int_config(driver_cfg.get("rollout_max_turns"), default=200),
         budget_prompt=_bool_config(driver_cfg.get("budget_prompt"), default=True),
+        enable_multi_agent=_optional_bool_config(driver_cfg.get("enable_multi_agent")),
         completion_filename=str(driver_cfg.get("completion_filename") or ".evolve-done.json"),
         instruction_filename=str(
             driver_cfg.get("instruction_filename") or ".evolve-instruction.md"
         ),
         timeout_seconds=float(driver_cfg.get("timeout_seconds") or 900.0),
         personality=cast(str | None, driver_cfg.get("personality")),
+        codex_system_prompt_file=_resolve_repo_relative_path(driver_cfg.get("system_prompt_file")),
         role=role,
         approval_policy=str(driver_cfg.get("approval_policy") or "never"),
         sandbox_mode=str(_sandbox_mode_from_driver_cfg(driver_cfg)),
@@ -224,8 +230,10 @@ def _build_codex_exec_driver(
         ),
         rollout_max_turns=_int_config(driver_cfg.get("rollout_max_turns"), default=200),
         budget_prompt=_bool_config(driver_cfg.get("budget_prompt"), default=True),
+        enable_multi_agent=_optional_bool_config(driver_cfg.get("enable_multi_agent")),
         timeout_seconds=float(driver_cfg.get("timeout_seconds") or 900.0),
         personality=cast(str | None, driver_cfg.get("personality")),
+        codex_system_prompt_file=_resolve_repo_relative_path(driver_cfg.get("system_prompt_file")),
         role=role,
         web_search=_web_search_from_driver_cfg(driver_cfg),
         token_pricing=_token_pricing_from_driver_cfg(driver_cfg),
@@ -346,6 +354,12 @@ def _bool_config(value: object, *, default: bool) -> bool:
     return default
 
 
+def _optional_bool_config(value: object) -> bool | None:
+    if isinstance(value, bool):
+        return value
+    return None
+
+
 def _sandbox_mode_from_driver_cfg(driver_cfg: dict[str, Any]) -> str:
     configured = driver_cfg.get("sandbox_mode")
     if isinstance(configured, str) and configured:
@@ -387,6 +401,20 @@ def _string_config(value: object) -> str | None:
     if isinstance(value, str) and value.strip():
         return value.strip()
     return None
+
+
+def _resolve_repo_relative_path(value: object) -> str | None:
+    """Resolve a config path to an absolute string (None passes through).
+
+    Relative paths anchor to the repo root, like application asset paths.
+    """
+    text = _string_config(value)
+    if text is None:
+        return None
+    path = Path(text).expanduser()
+    if not path.is_absolute():
+        path = _REPO_ROOT / path
+    return str(path.resolve())
 
 
 def _model_providers_from_driver_cfg(driver_cfg: dict[str, Any]) -> dict[str, dict[str, object]]:

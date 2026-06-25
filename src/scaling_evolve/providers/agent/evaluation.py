@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol, runtime_checkable
+
+import yaml
 
 from scaling_evolve.core.engine import BudgetLedger
 from scaling_evolve.core.enums import EvalStatus
@@ -32,6 +35,12 @@ class AgentEvaluationRun:
     error: str | None = None
 
 
+_FENCED_VERDICT_RE = re.compile(
+    r"```[ \t]*(?P<lang>json|ya?ml)[^\n]*\n(?P<body>.*?)\n```[ \t]*",
+    re.IGNORECASE | re.DOTALL,
+)
+
+
 def run_agent_for_result(
     *,
     driver: SpawnOnlyDriver,
@@ -54,6 +63,39 @@ def load_json_completion_text(rollout: SessionRollout) -> str:
 
     completion_path = Path(rollout.state.metadata["completion_path"])  # type: ignore[index]
     return completion_path.read_text(encoding="utf-8")
+
+
+def parse_fenced_verdict_block(text: str) -> dict[str, object]:
+    """Parse the first valid fenced JSON/YAML verdict block from agent text."""
+
+    errors: list[str] = []
+    for match in _FENCED_VERDICT_RE.finditer(text):
+        lang = match.group("lang").lower()
+        body = match.group("body").strip()
+        try:
+            payload = json.loads(body) if lang == "json" else yaml.safe_load(body)
+        except (json.JSONDecodeError, yaml.YAMLError) as exc:
+            errors.append(f"{lang} block failed to parse: {exc}")
+            continue
+        if not isinstance(payload, dict):
+            errors.append(f"{lang} block parsed to {type(payload).__name__}, not a mapping")
+            continue
+        return {str(key): value for key, value in payload.items()}
+    if errors:
+        raise ValueError("No valid fenced JSON/YAML verdict block found: " + "; ".join(errors))
+    raise ValueError("No fenced ```json or ```yaml verdict block found in agent summary.")
+
+
+def load_completion_summary_verdict(rollout: SessionRollout) -> dict[str, object]:
+    """Load an agent completion JSON and parse its summary fenced verdict."""
+
+    completion_payload = json.loads(load_json_completion_text(rollout))
+    if not isinstance(completion_payload, dict):
+        raise ValueError("Agent completion payload must be a JSON object.")
+    summary = completion_payload.get("summary")
+    if not isinstance(summary, str) or not summary.strip():
+        raise ValueError("Agent completion payload does not contain a non-empty summary.")
+    return parse_fenced_verdict_block(summary)
 
 
 def evaluation_from_agent_payload(payload: dict[str, object]) -> EvaluationResult:

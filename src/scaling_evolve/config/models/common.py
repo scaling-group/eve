@@ -1,4 +1,4 @@
-"""Common config model helpers."""
+"""Common config models."""
 
 from __future__ import annotations
 

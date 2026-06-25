@@ -12,7 +12,7 @@ from scaling_evolve.providers.agent.drivers.codex_tmux import (
 from scaling_evolve.providers.agent.tmux_runtime import TmuxPanePoolSession
 
 
-def test_codex_tmux_pool_reuses_one_pane_across_role_labels(
+def test_codex_tmux_pool_reuses_one_pane_across_solver_eval_optimizer(
     monkeypatch,
     tmp_path: Path,
 ) -> None:
@@ -117,7 +117,7 @@ def test_codex_tmux_pool_reuses_one_pane_across_role_labels(
             role=role,
             model="gpt-5.4-mini",
         )
-        for role in ("solver", "eval", "check")
+        for role in ("solver", "eval", "optimizer")
     ]
     for index, driver in enumerate(drivers, start=1):
         rollout = driver.spawn(
@@ -136,7 +136,7 @@ def test_codex_tmux_pool_reuses_one_pane_across_role_labels(
     assert launches == [
         ("%7", "[solver] Gen ? | TASK | Slot ?"),
         ("%7", "[eval] Gen ? | TASK | Slot ?"),
-        ("%7", "[check] Gen ? | TASK | Slot ?"),
+        ("%7", "[optimizer] Gen ? | TASK | Slot ?"),
     ]
     assert residue_checks == [(False, False, False)] * 3
     assert banner_titles[0] == "Codex Pool | idle"

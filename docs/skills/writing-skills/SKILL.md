@@ -7,7 +7,7 @@ description: "Use when creating new skills, editing existing skills, or verifyin
 
 ## Directory Structure
 
-Put skills in `docs/skills`, we have linked `.agent/skills` and `.claude/skills` to this folder, so they can be loaded automatically.
+Put skills in `docs/skills`, we have linked `.agents/skills` and `.claude/skills` to this folder, so they can be loaded automatically.
 
 ```
 docs/

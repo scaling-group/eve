@@ -1,0 +1,44 @@
+# Run:
+#   uv run python -m scaling_evolve.algorithms.eve.runner --config-name=math_proof_jensen_covering
+
+defaults:
+  - runtime: default
+  - loop: math_proof
+  - driver: codex_max
+  - logger: many_loggers
+  - application: math_proof_jensen_covering
+  - optimizer: math_proof
+  - evaluation: math_proof
+  - _self_
+
+label: math-proof-jensen-covering
+
+logger:
+  wandb:
+    enabled: false
+
+loop:
+  max_iterations: 4
+  n_workers_phase2: 3
+  n_solver_examples_phase2: 4
+  n_optimizer_examples_phase2: 4
+  produce_optimizer_in_phase2: 2
+  sampling:
+    phase1_solver_population:
+      features:
+        dimensions:
+          coverage:
+            weight: 0.30
+            temperature: 1.0
+          correctness:
+            weight: 0.40
+            temperature: 1.0
+          dependency:
+            weight: 0.15
+            temperature: 1.0
+          strategy:
+            weight: 0.10
+            temperature: 1.0
+          clarity:
+            weight: 0.05
+            temperature: 1.0

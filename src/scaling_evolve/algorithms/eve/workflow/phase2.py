@@ -13,10 +13,7 @@ from optree import PyTree
 
 from scaling_evolve.algorithms.eve.populations.entry import PopulationEntry
 from scaling_evolve.algorithms.eve.rollout_prompts.default import PromptContext
-from scaling_evolve.algorithms.eve.workflow.evaluation import (
-    RemoteTransportHaltError,
-    SolverEvaluator,
-)
+from scaling_evolve.algorithms.eve.workflow.evaluation import SolverEvaluator
 from scaling_evolve.algorithms.eve.workflow.optimize_logs import (
     build_optimize_log_tree,
 )
@@ -24,6 +21,7 @@ from scaling_evolve.algorithms.eve.workspace.runtime_hooks import (
     install_workspace_runtime_hooks,
 )
 from scaling_evolve.algorithms.eve.workspace.solver_workspace import (
+    SolverWorkerConfig,
     SolverWorkspaceBuilder,
 )
 from scaling_evolve.providers.agent.drivers.base import SessionDriver, SessionRollout, SessionSeed
@@ -45,6 +43,7 @@ class Phase2Result:
     rollouts: list[SessionRollout] = field(default_factory=list)
     optimizer_log_tree: dict[str, str] = field(default_factory=dict)
     workspace_id: str = ""
+    worker_name: str = ""
 
 
 @dataclass(frozen=True)
@@ -98,6 +97,7 @@ class Phase2Runner:
         self.optimize_log_tree: dict[str, str] = {}
         self.boundary_result: object | None = None
         self.worker_index: int = 0
+        self.worker_config: SolverWorkerConfig | None = None
 
     def run_single(
         self,
@@ -114,6 +114,9 @@ class Phase2Runner:
         self.optimizer_examples = list(optimizer_examples or [])
         self.prefill_solver = prefill_solver
         self.worker_index = worker_index
+        self.worker_config = self.solver_workspace_builder.select_worker_config(
+            worker_index=self.worker_index
+        )
         self._build_workspace()
         self._run_agent()
         if self.workspace is None or self.boundary_result is None:
@@ -134,6 +137,8 @@ class Phase2Runner:
     def _build_workspace(self) -> None:
         if self.optimizer is None:
             raise ValueError("Phase2Runner._build_workspace requires optimizer.")
+        if self.worker_config is None:
+            raise ValueError("Phase2Runner._build_workspace requires worker_config.")
         workspace_id = f"{self.step_label}_{uuid.uuid4().hex[:_WORKSPACE_ID_HEX_LENGTH]}"
         workspace, _ = self.solver_workspace_builder.build(
             self.optimizer.files,
@@ -143,6 +148,7 @@ class Phase2Runner:
             worker_index=self.worker_index,
             prefill_solver=self.prefill_solver,
             optimizer_examples=self.optimizer_examples,
+            worker_config=self.worker_config,
         )
         if self.prefill_solver is None:
             raise ValueError("Phase2Runner._build_workspace requires prefill_solver.")
@@ -152,12 +158,15 @@ class Phase2Runner:
             solvers=self.solvers,
             prefill_solver=self.prefill_solver,
             optimizer_examples=self.optimizer_examples,
+            worker_config=self.worker_config,
         )
         self.workspace = workspace
 
     def _run_agent(self) -> None:
-        if self.workspace is None or self.optimizer is None:
-            raise ValueError("Phase2Runner._run_agent requires workspace and optimizer.")
+        if self.workspace is None or self.optimizer is None or self.worker_config is None:
+            raise ValueError(
+                "Phase2Runner._run_agent requires workspace, optimizer, and worker_config."
+            )
         prompt_specs = self._build_prompt_specs()
         install_workspace_runtime_hooks(
             self.workspace, driver=self.driver, prompt_specs=prompt_specs
@@ -169,11 +178,12 @@ class Phase2Runner:
                     solvers=self.solvers,
                     prefill_solver=self.prefill_solver,
                     optimizer_examples=self.optimizer_examples,
+                    worker_config=self.worker_config,
                 ),
                 working_directory=str(self.workspace),
                 prompt_file="README.md",
                 write_prompt_file=False,
-                display_context={"iteration": self.iteration, "worker_index": self.worker_index},
+                display_context=self._display_context(),
             )
         )
         self.optimize_rollouts = [rollout]
@@ -190,7 +200,8 @@ class Phase2Runner:
             rollout = self.driver.resume(
                 rollout.state,
                 instruction=self.solver_workspace_builder.boundary_repair_instruction(
-                    boundary_result
+                    boundary_result,
+                    worker_config=self.worker_config,
                 ),
             )
             self.optimize_rollouts.append(rollout)
@@ -208,6 +219,8 @@ class Phase2Runner:
     def _build_prompt_specs(self) -> list[dict[str, object]]:
         if self.workspace is None:
             raise ValueError("Phase2Runner._build_prompt_specs requires workspace.")
+        if self.worker_config is None:
+            raise ValueError("Phase2Runner._build_prompt_specs requires worker_config.")
         if not _driver_budget_prompt_enabled(self.driver):
             return []
         ctx = PromptContext(
@@ -215,7 +228,7 @@ class Phase2Runner:
             rollout_max_turns=_driver_rollout_max_turns(self.driver),
         )
         prompt_specs: list[dict[str, object]] = []
-        for name, prompt in self.solver_workspace_builder.rollout_prompts.items():
+        for name, prompt in self.worker_config.rollout_prompts.items():
             prompt_specs.append(
                 {
                     "name": name,
@@ -253,7 +266,9 @@ class Phase2Runner:
         score, evaluate_log_tree = self.solver_evaluator.evaluate_candidate(
             workspace_root=workspace_root,
             boundary_result=boundary_result,
-            display_context={"iteration": self.iteration, "worker_index": worker_index},
+            candidate_files=candidate_files,
+            optimize_logs=optimize_logs,
+            display_context=self._display_context(worker_index=worker_index),
         )
         solver_logs = self.solver_workspace_builder.write_run_logs(
             workspace_root,
@@ -265,14 +280,6 @@ class Phase2Runner:
             files=candidate_files,
             score=score,
             logs=solver_logs,
-        )
-        self.solver_workspace_builder.write_score_manifest(
-            workspace_root,
-            sampled_solvers=sampled_solvers,
-            optimizer=self.optimizer,
-            sampled_optimizers=self.optimizer_examples,
-            prefill_solver=prefill_solver,
-            produced_solver=produced_solver,
         )
         _LOGGER.info(
             "%s: evaluation finished for solver candidate `%s`",
@@ -311,6 +318,7 @@ class Phase2Runner:
             rollouts=list(self.optimize_rollouts),
             optimizer_log_tree=optimizer_log_tree,
             workspace_id=self.workspace.name,
+            worker_name=self.worker_config.name if self.worker_config is not None else "",
         )
 
     def _build_phase2_optimizer(
@@ -324,7 +332,10 @@ class Phase2Runner:
             or int(self.solver_workspace_builder.config.produce_optimizer_in_phase2) <= 0
         ):
             return None
-        optimizer_files = self.solver_workspace_builder.extract_optimizer(self.workspace)
+        optimizer_files = self.solver_workspace_builder.extract_optimizer(
+            self.workspace,
+            worker_config=self.worker_config,
+        )
         if not optimizer_files:
             _LOGGER.warning(
                 "%s: produced no optimizer files in %s.",
@@ -356,6 +367,16 @@ class Phase2Runner:
         if self.total_iterations is None:
             return f"Iteration {self.iteration} | Phase 2"
         return f"Iteration {self.iteration}/{self.total_iterations} | Phase 2"
+
+    def _display_context(self, *, worker_index: int | None = None) -> dict[str, str | int]:
+        worker_config = self.worker_config
+        context: dict[str, str | int] = {
+            "iteration": self.iteration,
+            "worker_index": self.worker_index if worker_index is None else worker_index,
+        }
+        if worker_config is not None:
+            context["worker_name"] = worker_config.name
+        return context
 
 
 def _driver_rollout_max_turns(driver: SessionDriver) -> int | None:
@@ -462,13 +483,6 @@ class Phase2BatchRunner:
                 optimizer = future_to_optimizer[future]
                 try:
                     results.append(future.result())
-                except RemoteTransportHaltError:
-                    _LOGGER.error(
-                        "%s: transport halt while evaluating optimizer %s; aborting iteration.",
-                        self._phase_log_prefix(),
-                        optimizer.id,
-                    )
-                    raise
                 except Exception:
                     _LOGGER.exception(
                         "%s: failed for optimizer %s; skipping.",

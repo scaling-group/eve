@@ -1,0 +1,30 @@
+# @package _global_
+# Math-proof evaluator assets adapted from the latest EvE-Prover to core's
+# current judge-step interface.
+
+evaluation:
+  steps:
+    - immutable: configs/eve/evaluation/math_proof/immutable
+      prompt: configs/eve/evaluation/math_proof/prompt
+  immutable_renderer:
+    _target_: scaling_evolve.algorithms.eve.workspace.immutable_renderers.static.StaticRenderer
+  failure_score:
+    dimensions:
+      coverage: 0.0
+      correctness: 0.0
+      dependency: 0.0
+      clarity: 0.0
+      strategy: 0.0
+  seed_solver_score:
+    dimensions:
+      coverage: 0.0
+      correctness: 0.0
+      dependency: 0.0
+      clarity: 0.0
+      strategy: 0.0
+  seed_solver_skip_evaluation: true
+
+driver:
+  overrides:
+    eval:
+      system_prompt_file: configs/eve/evaluation/math_proof/prompt/CODEX_SYSTEM_PROMPT.md

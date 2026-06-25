@@ -30,7 +30,7 @@ class WandbEveLogger(EveLogger):
         run_id: str,
         full_config: dict[str, object],
         enabled: bool = False,
-        project: str = "scaling-evolve",
+        project: str = "eve",
         entity: str | None = None,
         mode: str | None = None,
         name: str | None = None,
@@ -142,7 +142,6 @@ class WandbEveLogger(EveLogger):
         self._sdk.define_metric("phase2/*", step_metric="iteration")
         self._sdk.define_metric("phase2/iteration/*", step_metric="iteration")
         self._sdk.define_metric("phase2/cumulative/*", step_metric="iteration", summary="last")
-
         run_url = getattr(self._run, "url", None)
         if isinstance(run_url, str) and run_url:
             _LOG.info("W&B run url: %s", run_url)

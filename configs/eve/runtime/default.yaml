@@ -3,7 +3,10 @@
 label: ""
 run_timestamp: ${now:%Y%m%d_%H%M%S_%f}
 run_id: ${eve_run_id:${run_timestamp},${label}}
-run_root: ${oc.env:PWD}/.runs/eve/${application.name}/${run_id}
+resume_from: null
+resume_iteration: null
+import_from: null
+run_root: ${eve_run_root:${resume_from},${oc.env:PWD},${application.name},${run_id}}
 
 hydra:
   run:

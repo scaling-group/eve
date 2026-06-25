@@ -1,0 +1,91 @@
+# @package _global_
+# Eve loop defaults for math-proof tasks.
+
+loop:
+  max_iterations: 25
+  n_workers_phase2: 3
+  n_solver_examples_phase2: 4
+  n_optimizer_examples_phase2: 4  # See `_build_worker_optimizer_examples`.
+  produce_optimizer_in_phase2: ${loop.n_workers_phase2}
+  boundary_repair_attempts: 3
+  enable_resume: true  # write checkpoints and lineage snapshots for same-run resume
+  sampling:
+    # Phase 2 worker optimizers. Optimizer scores remain scalar Elo payloads.
+    phase1_optimizer_population:
+      _target_: scaling_evolve.algorithms.eve.populations.samplers.rank_softmax.RankSoftmaxSampler
+      temperature: 1.0
+      replacement_mode: auto
+    # Math-proof solver scores are dimensions-only; there is no headline
+    # `score`, so rank solver examples by proof-quality dimensions.
+    phase1_solver_population:
+      _target_: scaling_evolve.algorithms.eve.populations.samplers.rank_softmax.RankExponentialSumSampler
+      features:
+        dimensions:
+          coverage:
+            weight: 0.40
+            temperature: 1.0
+          correctness:
+            weight: 0.30
+            temperature: 1.0
+          dependency:
+            weight: 0.15
+            temperature: 1.0
+          strategy:
+            weight: 0.10
+            temperature: 1.0
+          clarity:
+            weight: 0.05
+            temperature: 1.0
+      replacement_mode: no_replacement
+    # Phase 2 prefill solver.
+    solver_workspace_prefill:
+      _target_: scaling_evolve.algorithms.eve.populations.samplers.rank_softmax.RankExponentialSumSampler
+      features:
+        dimensions:
+          coverage:
+            weight: 0.40
+            temperature: 1.0
+          correctness:
+            weight: 0.30
+            temperature: 1.0
+          dependency:
+            weight: 0.15
+            temperature: 1.0
+          strategy:
+            weight: 0.10
+            temperature: 1.0
+          clarity:
+            weight: 0.05
+            temperature: 1.0
+      replacement_mode: no_replacement
+    # Phase 2 shared optimizer examples. Optimizer scores remain scalar Elo.
+    phase2_optimizer_examples:
+      _target_: scaling_evolve.algorithms.eve.populations.samplers.rank_softmax.RankSoftmaxSampler
+      temperature: 1.0
+      replacement_mode: no_replacement
+    # Keep produced optimizers according to the dimensions of the solver they
+    # produced, using the same proof-quality weighting.
+    phase2_produced_optimizers:
+      _target_: scaling_evolve.algorithms.eve.populations.samplers.rank_softmax.RankExponentialSumSampler
+      features:
+        dimensions:
+          coverage:
+            weight: 0.40
+            temperature: 1.0
+          correctness:
+            weight: 0.30
+            temperature: 1.0
+          dependency:
+            weight: 0.15
+            temperature: 1.0
+          strategy:
+            weight: 0.10
+            temperature: 1.0
+          clarity:
+            weight: 0.05
+            temperature: 1.0
+      replacement_mode: no_replacement
+  workspace_root: ${run_root}
+  artifact_root: ${loop.workspace_root}/artifacts
+  solver_db_path: ${loop.workspace_root}/solver_lineage.db
+  optimizer_db_path: ${loop.workspace_root}/optimizer_lineage.db

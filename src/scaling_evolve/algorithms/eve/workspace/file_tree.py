@@ -88,28 +88,38 @@ def _is_probably_binary(payload: bytes) -> bool:
 def expose_guidance_skills(workspace: Path) -> None:
     """Expose guidance/skills through workspace-root agent conventions."""
     skills_dir = workspace / "guidance" / "skills"
-    if not skills_dir.exists():
-        return
+    skills_dir.mkdir(parents=True, exist_ok=True)
 
-    _ensure_symlink(workspace / ".claude" / "skills", Path("..") / "guidance" / "skills")
-    _ensure_symlink(workspace / ".codex" / "skills", Path("..") / "guidance" / "skills")
-
-
-def write_project_agent_definitions(
-    workspace: Path,
-    *,
-    name: str,
-    claude_content: str,
-    codex_content: str,
-) -> None:
-    """Write predefined agent definitions for Claude and Codex."""
-    roots_contents_and_suffixes = (
-        (workspace / ".claude" / "agents", claude_content, ".md"),
-        (workspace / ".codex" / "agents", codex_content, ".toml"),
+    _ensure_symlink(
+        workspace / ".claude" / "skills",
+        Path("..") / "guidance" / "skills",
+        target_is_directory=True,
     )
-    for root, content, suffix in roots_contents_and_suffixes:
-        root.mkdir(parents=True, exist_ok=True)
-        (root / f"{name}{suffix}").write_text(content.strip() + "\n", encoding="utf-8")
+    _ensure_symlink(
+        workspace / ".codex" / "skills",
+        Path("..") / "guidance" / "skills",
+        target_is_directory=True,
+    )
+
+
+def expose_guidance_agents(workspace: Path) -> None:
+    """Expose optimizer-provided agent definitions through local tool conventions.
+
+    Guidance agent provider directories are symlinked so edits and newly created
+    guidance agents remain visible during the same workspace. Immutable files may
+    later be written through these symlinks as overlay files.
+    """
+    agent_specs = (
+        (workspace / "guidance" / "agents" / "codex", workspace / ".codex" / "agents"),
+        (workspace / "guidance" / "agents" / "claude", workspace / ".claude" / "agents"),
+    )
+    for source_dir, destination_dir in agent_specs:
+        source_dir.mkdir(parents=True, exist_ok=True)
+        _ensure_symlink(
+            destination_dir,
+            Path("..") / "guidance" / "agents" / source_dir.name,
+            target_is_directory=True,
+        )
 
 
 def write_claude_stop_hook_settings(
@@ -147,8 +157,8 @@ def write_claude_stop_hook_settings(
     settings_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
 
 
-def _ensure_symlink(path: Path, target: Path) -> None:
+def _ensure_symlink(path: Path, target: Path, *, target_is_directory: bool = False) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     if path.is_symlink() or path.exists():
         path.unlink()
-    path.symlink_to(target, target_is_directory=True)
+    path.symlink_to(target, target_is_directory=target_is_directory)

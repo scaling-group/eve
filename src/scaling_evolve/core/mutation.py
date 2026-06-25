@@ -60,6 +60,7 @@ class MutationInstructionLike(DomainModel):
     content: str
     strategy: str | None = None
     system_message: str | None = None
+    prompt_style: Literal["core_default"] = "core_default"
     task_instruction: str | None = None
     output_format: str | None = None
     diversity_guidance: str | None = None

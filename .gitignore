@@ -17,8 +17,11 @@ artifacts/
 .env
 .env.*
 !.env.example
+/.agent-runtime/
 .experiment-claude-config/
 .claude-driver-transcripts/
+.codex-driver-home/
+.codex-driver-transcripts/
 .codex/*
 !.codex/skills
 *.o*

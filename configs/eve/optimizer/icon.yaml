@@ -1,10 +1,15 @@
 # @package _global_
-# ICON PE demo optimizer definition
+# ICON PE optimizer definition.
 
 optimizer:
-  initial_optimizer: configs/eve/optimizer/icon/initial_optimizer
-  immutable: configs/eve/optimizer/icon/immutable
-  prompt: configs/eve/optimizer/icon/prompt
+  initial_guidance: configs/eve/optimizer/icon/initial_guidance
+  workers:
+    selection: random
+    items:
+      - name: normal
+        weight: 1.0
+        immutable: configs/eve/optimizer/icon/immutable
+        prompt: configs/eve/optimizer/icon/prompt
   immutable_renderer:
     _target_: scaling_evolve.algorithms.eve.workspace.immutable_renderers.default.DefaultRenderer
   evaluation:

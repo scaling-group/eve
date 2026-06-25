@@ -8,11 +8,6 @@ import hashlib
 from dataclasses import dataclass
 from pathlib import Path
 
-_AUTO_GENERATED_ALLOWED_PREFIXES = (
-    ".agents/skills/",
-    ".claude/skills/",
-)
-
 
 def _sha256_bytes(path: Path) -> str:
     digest = hashlib.sha256()
@@ -128,7 +123,6 @@ def _forbidden_paths(
         path
         for path in paths
         if path != ".gitignore"
-        and not any(path.startswith(prefix) for prefix in _AUTO_GENERATED_ALLOWED_PREFIXES)
         and not _is_editable_path(
             path,
             editable=editable,

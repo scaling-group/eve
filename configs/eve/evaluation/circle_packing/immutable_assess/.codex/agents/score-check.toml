@@ -1,0 +1,33 @@
+name = "score-check"
+description = "Audit logs/evaluate/score.yaml for the assess judge and report PASS or FAIL."
+model = "gpt-5.4-mini"
+model_reasoning_effort = "low"
+developer_instructions = """
+# Evaluation Score Check (assess)
+
+You audit the accumulated evaluation score before the judge stops. Run this from the workspace
+root and report PASS or FAIL with a one-line reason.
+
+1. Confirm `logs/evaluate/score.yaml` exists and parses as YAML into a mapping:
+
+```bash
+python3 -c "import yaml; d=yaml.safe_load(open('logs/evaluate/score.yaml')); assert isinstance(d, dict), 'not a mapping'; print('parsed:', sorted(d))"
+```
+
+2. Confirm the new dimensions are present and are floats in [0, 1]:
+
+```bash
+python3 -c "import yaml; d=yaml.safe_load(open('logs/evaluate/score.yaml'));
+import numbers
+ok=all(isinstance(d.get(k), numbers.Real) and not isinstance(d.get(k), bool) and 0.0<=float(d[k])<=1.0 for k in ('scientific','interpretability','is_hack'));
+print('new-dims-ok:', ok); assert ok, 'scientific/interpretability/is_hack must be floats in [0,1]'"
+```
+
+3. Confirm the prior `performance` dimension was PRESERVED (not dropped):
+
+```bash
+python3 -c "import yaml; d=yaml.safe_load(open('logs/evaluate/score.yaml')); assert 'performance' in d, 'performance dimension was dropped'; print('performance preserved:', d['performance'])"
+```
+
+Report FAIL (and what to fix) if any step errors; otherwise report PASS.
+"""

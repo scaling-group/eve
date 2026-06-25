@@ -132,7 +132,7 @@ def test_build_role_drivers_injects_model_provider_env(monkeypatch, tmp_path: Pa
     drivers.close()
 
 
-def test_build_role_drivers_creates_shared_pool_for_eval_claude_tmux_override(
+def test_build_role_drivers_creates_shared_pool_for_tmux_eval_override(
     monkeypatch,
     tmp_path: Path,
 ) -> None:
@@ -181,13 +181,14 @@ def test_build_role_drivers_creates_shared_pool_for_eval_claude_tmux_override(
     )
 
     assert isinstance(drivers.solver_driver, CodexTmuxSessionDriver)
-    assert isinstance(drivers.eval_driver_factory(), ClaudeCodeTmuxSessionDriver)
+    eval_driver = drivers.eval_driver_factory()
+    assert isinstance(eval_driver, ClaudeCodeTmuxSessionDriver)
     assert drivers.pane_pool is not None
     assert opened == ["mixed-pool-test"]
     drivers.close()
 
 
-def test_build_role_drivers_passes_effort_level_to_claude_tmux_override(
+def test_build_role_drivers_passes_effort_level_to_tmux_override(
     monkeypatch,
     tmp_path: Path,
 ) -> None:
@@ -246,7 +247,7 @@ def test_build_role_drivers_passes_effort_level_to_claude_tmux_override(
     drivers.close()
 
 
-def test_build_role_drivers_disables_web_tools_for_claude_tmux(
+def test_build_role_drivers_disables_web_tools_for_tmux_backend(
     monkeypatch,
     tmp_path: Path,
 ) -> None:
@@ -291,7 +292,7 @@ def test_build_role_drivers_disables_web_tools_for_claude_tmux(
     drivers.close()
 
 
-def test_build_role_drivers_disables_web_tools_for_claude_noninteractive(tmp_path: Path) -> None:
+def test_build_role_drivers_disables_web_tools_for_claude_code_backend(tmp_path: Path) -> None:
     drivers = build_role_drivers(
         {
             "driver": "claude_code",
@@ -309,7 +310,9 @@ def test_build_role_drivers_disables_web_tools_for_claude_noninteractive(tmp_pat
     assert drivers.solver_driver.setting_sources == ("project", "local")
 
 
-def test_build_role_drivers_passes_budget_prompt_to_claude_noninteractive(tmp_path: Path) -> None:
+def test_build_role_drivers_passes_budget_prompt_to_claude_code_backend(
+    tmp_path: Path,
+) -> None:
     drivers = build_role_drivers(
         {
             "driver": "claude_code",
@@ -346,6 +349,62 @@ def test_build_role_drivers_builds_codex_exec_driver(tmp_path: Path) -> None:
     assert drivers.solver_driver.rollout_max_turns == 12
     assert drivers.solver_driver.budget_prompt is False
     assert drivers.solver_driver.web_search == "disabled"
+
+
+def test_build_role_drivers_resolves_system_prompt_per_role(
+    tmp_path: Path,
+) -> None:
+    # Generic `system_prompt_file` config key set only on the solver role; presence
+    # is the switch. The codex driver receives it as `codex_system_prompt_file`.
+    rel = "configs/eve/optimizer/circle_packing/prompt/CODEX_SYSTEM_PROMPT.md"
+    drivers = build_role_drivers(
+        {
+            "driver": "codex_exec",
+            "model": "gpt-5.4-mini",
+            "overrides": {
+                "solver": {"system_prompt_file": rel},
+            },
+        },
+        run_root=tmp_path / "run-root",
+        workers=1,
+    )
+
+    assert isinstance(drivers.solver_driver, CodexExecSessionDriver)
+    solver_path = drivers.solver_driver.codex_system_prompt_file
+    assert solver_path is not None
+    # Resolved to an absolute path anchored at the repo root (the shipped file).
+    assert Path(solver_path).is_absolute()
+    assert Path(solver_path).is_file()
+    assert solver_path.endswith(rel)
+    # No override on eval -> Codex keeps its built-in system prompt.
+    eval_driver = drivers.eval_driver_factory()
+    assert isinstance(eval_driver, CodexExecSessionDriver)
+    assert eval_driver.codex_system_prompt_file is None
+
+
+def test_build_role_drivers_plumbs_codex_multi_agent_role_overrides(
+    tmp_path: Path,
+) -> None:
+    drivers = build_role_drivers(
+        {
+            "driver": "codex_exec",
+            "model": "gpt-5.4-mini",
+            "enable_multi_agent": True,
+            "overrides": {
+                "eval": {
+                    "enable_multi_agent": False,
+                }
+            },
+        },
+        run_root=tmp_path / "run-root",
+        workers=1,
+    )
+
+    assert isinstance(drivers.solver_driver, CodexExecSessionDriver)
+    assert drivers.solver_driver.enable_multi_agent is True
+    eval_driver = drivers.eval_driver_factory()
+    assert isinstance(eval_driver, CodexExecSessionDriver)
+    assert eval_driver.enable_multi_agent is False
 
 
 def test_load_pricing_table_reads_yaml(tmp_path: Path) -> None:

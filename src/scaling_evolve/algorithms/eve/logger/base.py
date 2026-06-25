@@ -14,7 +14,7 @@ from scaling_evolve.algorithms.eve.populations.score import scalar
 from scaling_evolve.algorithms.eve.workflow.optimize_logs import summarize_rollout_usage
 from scaling_evolve.algorithms.eve.workflow.phase2 import Phase2Result
 
-_USAGE_KEYS = (
+USAGE_KEYS = (
     "model_cost_usd",
     "input_tokens",
     "output_tokens",
@@ -26,6 +26,7 @@ _USAGE_KEYS = (
 _RESULT_TABLE_SHARED_COLUMNS = (
     "iteration",
     "worker_index",
+    "worker_name",
     "workspace_id",
     "score_json",
     "agent_turns",
@@ -43,8 +44,8 @@ class EveLogger:
 
     def __init__(self, *, excluded_score_fields: list[str] | tuple[str, ...]) -> None:
         self._excluded_score_fields = set(excluded_score_fields)
-        self._cumulative_phase2_usage = {key: 0.0 for key in _USAGE_KEYS}
-        self._cumulative_usage = {key: 0.0 for key in _USAGE_KEYS}
+        self._cumulative_phase2_usage = {key: 0.0 for key in USAGE_KEYS}
+        self._cumulative_usage = {key: 0.0 for key in USAGE_KEYS}
         self._cumulative_phase2_max_scores: dict[str, float] = {}
         self._phase2_solver_rows: list[dict[str, object]] = []
         self._phase2_optimizer_rows: list[dict[str, object]] = []
@@ -87,6 +88,15 @@ class EveLogger:
     ) -> None:
         raise NotImplementedError
 
+    def write_resume_anchor_summary(
+        self,
+        *,
+        solver_entries: list[PopulationEntry],
+        optimizer_entries: list[PopulationEntry],
+        iterations_completed: int,
+    ) -> None:
+        _ = (solver_entries, optimizer_entries, iterations_completed)
+
     def _build_iteration_payload(
         self,
         *,
@@ -106,8 +116,8 @@ class EveLogger:
         phase2_usage_totals = summarize_rollout_usage(
             [rollout for result in phase2_results for rollout in result.rollouts]
         )
-        iteration_usage_totals = {key: float(phase2_usage_totals[key]) for key in _USAGE_KEYS}
-        for key in _USAGE_KEYS:
+        iteration_usage_totals = {key: float(phase2_usage_totals[key]) for key in USAGE_KEYS}
+        for key in USAGE_KEYS:
             self._cumulative_phase2_usage[key] += float(phase2_usage_totals[key])
             self._cumulative_usage[key] += iteration_usage_totals[key]
         payload: dict[str, object] = {
@@ -201,7 +211,7 @@ class EveLogger:
 
     @staticmethod
     def _prefix_usage_metrics(prefix: str, usage_totals: dict[str, float]) -> dict[str, float]:
-        return {f"{prefix}/{key}": float(usage_totals[key]) for key in _USAGE_KEYS}
+        return {f"{prefix}/{key}": float(usage_totals[key]) for key in USAGE_KEYS}
 
     @staticmethod
     def _flatten_numeric_score(
@@ -248,7 +258,7 @@ class EveLogger:
     @staticmethod
     def _result_usage_row(rollouts: list[object]) -> dict[str, float]:
         usage = summarize_rollout_usage(rollouts)
-        return {key: float(usage[key]) for key in _USAGE_KEYS}
+        return {key: float(usage[key]) for key in USAGE_KEYS}
 
     @staticmethod
     def _entry_record(
@@ -264,6 +274,28 @@ class EveLogger:
             "first_seen_iteration": iteration,
         }
 
+    @staticmethod
+    def _best_projectable_entry(
+        entries: list[PopulationEntry], preferred_key: str
+    ) -> PopulationEntry | None:
+        """Best entry by scalar(score), skipping entries whose score has no scalar projection.
+
+        A vector score (no `preferred_key`, multiple numeric leaves) cannot be projected to a
+        single scalar, so such entries are skipped rather than crashing the logger. With all
+        entries scalar-projectable (the default single-`score` case) this is the previous
+        ``max(entries, key=scalar)`` behavior.
+        """
+        best_entry: PopulationEntry | None = None
+        best_value = float("-inf")
+        for entry in entries:
+            try:
+                value = scalar(entry.score, preferred_key=preferred_key)
+            except TypeError:
+                continue
+            if value > best_value:
+                best_entry, best_value = entry, value
+        return best_entry
+
     def _update_best_entry_record(
         self,
         *,
@@ -272,11 +304,7 @@ class EveLogger:
         preferred_key: str,
         current_attr: str,
     ) -> None:
-        best_entry = (
-            max(entries, key=lambda entry: scalar(entry.score, preferred_key=preferred_key))
-            if entries
-            else None
-        )
+        best_entry = self._best_projectable_entry(entries, preferred_key)
         if best_entry is None:
             return
         current_record = getattr(self, current_attr)
@@ -318,11 +346,9 @@ class EveLogger:
     ) -> dict[str, Any] | None:
         if stored_record is not None:
             return dict(stored_record)
-        if not entries:
+        best_entry = self._best_projectable_entry(entries, preferred_key)
+        if best_entry is None:
             return None
-        best_entry = max(
-            entries, key=lambda entry: scalar(entry.score, preferred_key=preferred_key)
-        )
         return self._entry_record(entry=best_entry, iteration=None, preferred_key=preferred_key)
 
     def _build_result_rows(
@@ -341,6 +367,7 @@ class EveLogger:
             row: dict[str, object] = {
                 "iteration": iteration,
                 "worker_index": index,
+                "worker_name": result.worker_name,
                 f"{entry_kind}_id": entry.id,
                 "workspace_id": result.workspace_id,
                 "score_json": json.dumps(entry.score, sort_keys=True, default=str),

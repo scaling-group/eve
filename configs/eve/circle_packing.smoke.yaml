@@ -1,13 +1,33 @@
-# Run: uv run python -m scaling_evolve.algorithms.eve.runner --config-name=circle_packing.smoke
+# Circle packing smoke entrypoint. Keep this as the single tracked smoke preset;
+# use Hydra overrides below for the less-common smoke paths instead of adding
+# separate root-level YAML presets.
+#
+# Ordinary loop smoke:
+#   uv run python -m scaling_evolve.algorithms.eve.runner --config-name=circle_packing.smoke
+#
+# Judge evaluation smoke:
+#   uv run python -m scaling_evolve.algorithms.eve.runner \
+#     --config-name=circle_packing.smoke \
+#     evaluation=circle_packing.judge \
+#     label=circle-packing-judge-smoke
+#
+# Prompt override smoke:
+#   uv run python -m scaling_evolve.algorithms.eve.runner \
+#     --config-name=circle_packing.smoke \
+#     evaluation=circle_packing.judge \
+#     loop.max_iterations=1 \
+#     label=circle-packing-codex-prompt-smoke \
+#     +driver.overrides.solver.system_prompt_file=configs/eve/optimizer/circle_packing/prompt/CODEX_SYSTEM_PROMPT.md
+#
+# To override the eval role system prompt in the same run, add:
+#   +driver.overrides.eval.system_prompt_file=configs/eve/evaluation/circle_packing/prompt/CODEX_SYSTEM_PROMPT.md
 
 defaults:
   - circle_packing
+  - override /driver: codex_smoke
   - _self_
 
 label: circle-packing-smoke
 
 loop:
-  max_iterations: 3
-
-driver:
-  rollout_max_turns: 3
+  max_iterations: 2

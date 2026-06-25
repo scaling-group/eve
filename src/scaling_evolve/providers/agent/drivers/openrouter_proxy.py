@@ -18,8 +18,9 @@ _CCH_RE = re.compile(r"cch=[^;\s]+")
 # path they can destabilize the converted prompt prefix and collapse GPT cache reuse.
 # WHEN TO REMOVE: when a fresh canary and corrected generation report stay healthy without
 # stripping `cache_control` on the current Claude Code + OpenRouter GPT stack.
-# HOW TO VERIFY: run `scripts/experiments/check_openrouter_cache_canary.py` and
-# `scripts/experiments/report_openrouter_generation_cache.py <run-id>` after upgrades.
+# HOW TO VERIFY: run `python -m scaling_evolve.providers.agent.openrouter_cache_canary`
+# and `python -m scaling_evolve.providers.agent.openrouter_cache_report <run-id>`
+# after upgrades.
 def _strip_cache_control(value: object) -> object:
     if isinstance(value, dict):
         return {

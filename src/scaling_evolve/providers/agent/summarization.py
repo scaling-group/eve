@@ -1,4 +1,4 @@
-"""Portable lineage summary helpers."""
+"""Portable lineage summary helpers for agent sessions."""
 
 from __future__ import annotations
 

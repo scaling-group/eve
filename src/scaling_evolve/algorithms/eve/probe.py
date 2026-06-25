@@ -22,8 +22,8 @@ _SOLVER_PROBE_ENTRYPOINT = "\n".join(
     [
         "Read `README.md` first.",
         "This is a solver smoke probe, not a full optimization run.",
-        "Inspect `guidance/`, `output/`, and the predefined `check-runner` sub-agent.",
-        "Make one tiny safe improvement to `output/candidate.py`, run the check workflow once,",
+        "Inspect `guidance/`, `solver/`, and the predefined `check-runner` sub-agent.",
+        "Make one tiny safe improvement to `solver/candidate.py`, run the check workflow once,",
         "write the required completion file, and stop immediately.",
     ]
 )
@@ -91,14 +91,14 @@ def _probe_solver(workspace: Path, driver) -> dict[str, object]:
     if workspace.exists():
         shutil.rmtree(workspace)
     (workspace / "guidance").mkdir(parents=True)
-    (workspace / "output").mkdir(parents=True)
+    (workspace / "solver").mkdir(parents=True)
     _write(
         workspace / "README.md",
         "\n".join(
             [
                 "# Solver Probe",
                 "",
-                "- Editable file: `output/candidate.py`.",
+                "- Editable file: `solver/candidate.py`.",
                 "- **MANDATORY:** Run the predefined `check-runner`"
                 " from the workspace root before you stop.",
             ]
@@ -135,7 +135,7 @@ def _probe_solver(workspace: Path, driver) -> dict[str, object]:
         + "\n",
     )
     _write(
-        workspace / "output" / "candidate.py",
+        workspace / "solver" / "candidate.py",
         "\n".join(
             [
                 "VALUE = 1",
@@ -150,7 +150,7 @@ def _probe_solver(workspace: Path, driver) -> dict[str, object]:
     rollout = driver.spawn(
         SessionSeed(
             instruction=_SOLVER_PROBE_ENTRYPOINT,
-            workspace=_workspace_lease(workspace, target_repo_root=workspace / "output"),
+            workspace=_workspace_lease(workspace, target_repo_root=workspace / "solver"),
             prompt_file="README.md",
             write_prompt_file=False,
         )
@@ -161,7 +161,7 @@ def _probe_solver(workspace: Path, driver) -> dict[str, object]:
         "summary": rollout.summary,
         "changed_paths": rollout.changed_paths,
         "completion_path": rollout.state.metadata.get("completion_path"),
-        "candidate": (workspace / "output" / "candidate.py").read_text(encoding="utf-8"),
+        "candidate": (workspace / "solver" / "candidate.py").read_text(encoding="utf-8"),
         "pane_pool_session_name": rollout.state.metadata.get("pane_pool_session_name"),
     }
 

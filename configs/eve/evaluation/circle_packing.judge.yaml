@@ -1,0 +1,43 @@
+# @package _global_
+# LLM-judge evaluation definition for circle_packing.
+#
+# `evaluation.steps` is an ordered, arbitrarily-long pipeline (design doc §3). Dispatch is by
+# FORM, not a `kind` field:
+#   - a bare `.sh` path string  -> programmatic step (writes a deterministic dimension)
+#   - a `{prompt, immutable?}` mapping -> LLM judge step (a first-class worker, aligned with the
+#     solver: its own prompt + budget, plus an OPTIONAL immutable rubric + score-check subagent,
+#     minus guidance and evolution). Omit `immutable` for a lightweight judge that runs from its
+#     ENTRYPOINT alone (no rubric scaffold, no subagent).
+#
+# Each judge step swaps ITS OWN immutable (rubric) + ENTRYPOINT into a single eval workspace
+# that is built ONCE per candidate; logs/evaluate/score.yaml accumulates across all steps and is
+# never cleared, so each judge reads the prior dims, keeps them, and adds/folds its own.
+#
+# This reference uses a representative 2-judge pipeline (assess -> aggregate) that proves
+# accumulation + fold, and deliberately shows BOTH judge shapes: `assess` ships a full immutable
+# scaffold (rubric README + score-check subagent), while `aggregate` omits immutable (a
+# lightweight prompt-only judge). The design doc's fuller list is:
+#   performance.sh -> rigor -> hack -> interpretability -> aggregate
+# (we collapse rigor/hack/interpretability into a single `assess` judge here to keep the
+# reference minimal while still exercising the full machinery).
+
+evaluation:
+  steps:
+    - configs/eve/evaluation/circle_packing/performance.sh   # -> performance (deterministic)
+    - {
+        immutable: configs/eve/evaluation/circle_packing/immutable_assess,
+        prompt: configs/eve/evaluation/circle_packing/prompt_assess,
+      }   # adds scientific / interpretability / is_hack (keeps performance)
+    - { prompt: configs/eve/evaluation/circle_packing/prompt_aggregate }   # immutable omitted (null) -> lightweight judge, runs from its ENTRYPOINT alone; reads all prior dims, folds the headline `score`
+
+  # Shared across judges: the rubric is static and has no solver markers, so render static.
+  immutable_renderer:
+    _target_: scaling_evolve.algorithms.eve.workspace.immutable_renderers.static.StaticRenderer
+
+  # judge agent runtime (model/driver) reuses driver.overrides.eval — see design doc §4.
+
+  failure_score:
+    score: 0.0
+    summary: evaluation failed
+  seed_solver_score: null
+  seed_solver_skip_evaluation: false
