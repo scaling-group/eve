@@ -4,8 +4,6 @@
 
 # EvE: Evolutionary Ensemble of Agents
 
-### **A decentralized ensemble of coding agents co-evolving with code repositories.**
-
 [![python](https://img.shields.io/badge/-Python_%3E%3D3.11-blue?logo=python&logoColor=white)](https://www.python.org/)
 [![hydra](https://img.shields.io/badge/Config-Hydra_1.3-89b8cd)](https://hydra.cc/)
 [![ruff](https://img.shields.io/badge/Code%20Style-Ruff-orange.svg?labelColor=gray)](https://docs.astral.sh/ruff/)<br>
@@ -20,55 +18,35 @@
 </div>
 
 <p align="center">
-<a href="https://arxiv.org/abs/2605.09018">Paper</a> &middot; <a href="#overview">Overview</a> &middot; <a href="#agent-backend">Agent Backend</a> &middot; <a href="#how-it-works">How It Works</a> &middot; <a href="#quick-start">Quick Start</a> &middot; <a href="#set-up-your-own-task">Set Up Your Own Task</a> &middot; <a href="#example-icon-context-length-generalization">Example</a> &middot; <a href="#codex-operator-skills">Skills</a> &middot; <a href="#papers-using-eve">Papers</a> &middot; <a href="#citation">Citation</a>
+<a href="https://arxiv.org/abs/2605.09018">Paper</a> &middot; <a href="#overview">Overview</a> &middot; <a href="#quick-start">Quick Start</a> &middot; <a href="#how-it-works">How It Works</a> &middot; <a href="#set-up-your-own-task">Set Up Your Own Task</a> &middot; <a href="#example-icon-context-length-generalization">Example</a> &middot; <a href="#papers-using-eve">Papers</a> &middot; <a href="#community">Community</a> &middot; <a href="#citation">Citation</a>
 </p>
-
-<p align="center"><b>Unlimited agents, fully autonomous.</b></p>
 
 <p align="center">
   <img src=".github/assets/eve-demo.gif" width="720">
 </p>
 <p align="center">
-  <sub>In interactive runs, each tmux pane is an independent coding agent editing, evaluating, and evolving solutions.</sub>
+  <sub>An illustrative run: each tmux pane is an independent coding agent editing, evaluating, and evolving solutions.</sub>
 </p>
 
 ## Overview
 
-Modern coding agents already have autonomous planning, complex reasoning,
-sophisticated context management, and sub-agent invocation. Rather than
-reinventing the wheel with "LLMs as optimizers", **EvE wraps existing, highly
-capable coding agents into a decentralized evolutionary ensemble** that
-co-evolves two populations: a **solver population** of functional components
-within a code repository, and an **agent population** whose guidance and skills
-are continuously refined through pairwise competition.
+EvE wraps existing, highly capable coding agents into a decentralized evolutionary ensemble that co-evolves two populations: a **solver population** of functional components within a repository, and an **agent population** whose guidance and skills are continuously self-refined.
 
-Any coding agent or multi-agent system can be seamlessly encapsulated as an
-individual within the ensemble. This naturally supports **recursive nesting**:
-an entire EvE ensemble can function as a single individual inside a higher-level
-ensemble.
+Use EvE for challenging tasks where results can be tested or judged: designing
+algorithms, improving code, or solving a mathematical problem.
 
-<p align="center">
-  <img src=".github/assets/eve-overview.png" width="720">
-</p>
-<p align="center">
-  <sub><b>(a)</b> LLM as Optimizer: an LLM proposes a code block, which is scored and re-prompted. <b>(b)</b> Coding Agent: operates on a full code repository with autonomous planning, tool use, and sub-agent invocation. <b>(c)</b> Evolutionary Ensemble (this work): a decentralized ensemble of coding agents that evolves with another population of functional components within a code repository.</sub>
-</p>
+To run EvE, you provide:
 
-## Agent Backend
+- a working environment, such as a codebase or a mathematical problem in a github repository or a local folder;
 
-The current public EvE release is Codex-first. The tracked driver presets use
-[**Codex**](https://github.com/openai/codex) as the agent backend:
+- the solution files or folders that are allowed to edit,
+  such as code files or a proof draft;
 
-- `codex_smoke` for fast runtime validation.
-- `codex_max` for full non-interactive runs.
+- scoring steps that evaluate each solution, such as shell scripts, agent judge prompts, or a combination of them.
 
-Codex can be run in two modes:
+EvE then searches for strong solutions without requiring a task-specific workflow or hand-crafted skills.
 
-- **Interactive (tmux)**: each agent session runs in a visible tmux pane,
-  exactly like using Codex in your terminal. You can watch agents work,
-  intervene, and debug in real time.
-- **Non-interactive (subprocess)**: agents run as headless subprocesses with
-  JSON streaming. This is the recommended default for unattended runs and CI.
+## Quick Start
 
 > [!IMPORTANT]
 > EvE orchestrates third-party coding agents; it does **not** provide unlimited
@@ -76,32 +54,57 @@ Codex can be run in two modes:
 > API credits on **your own account**. EvE does not bypass or modify any
 > provider's authentication, rate limits, or usage restrictions.
 
-## First-time Setup
+### First-time setup
 
-1. **Install dependencies.**
+1.  **Install dependencies.**
 
-       uv sync
+    uv sync
 
-2. **Agent authentication.** Install and authenticate your coding agent. For
-   example, run `codex login` if you use Codex through a ChatGPT subscription,
-   or export the API credentials required by your selected backend.
+2.  **Agent authentication.** The current public release uses
+    [**Codex**](https://github.com/openai/codex) as the default agent backend.
+    Install and authenticate Codex with your own login, subscription, or API
+    credentials.
 
-3. **Hook trust (for Codex >= 0.130.0).** EvE uses hooks for workspace
-   sandboxing and budget prompts. Run once per machine from the repository root
-   if you are using Codex:
+3.  **Hook trust (for Codex >= 0.130.0).** EvE uses hooks for workspace
+    sandboxing and budget prompts. Run once per machine from the repository root
+    if you are using Codex:
 
-       uv run python -m scaling_evolve.providers.agent.codex_hooks
-       codex .
-       # Type /hooks -> press t to trust all -> Esc -> Ctrl-C
+        uv run python -m scaling_evolve.providers.agent.codex_hooks
+        codex
+        # Type /hooks -> press t to trust all -> Esc -> Ctrl-C
 
-4. **Verify.** Run a short smoke test using Codex to confirm everything works:
+4.  **Verify.** Run a short smoke test using Codex to confirm everything works:
 
-       uv run python -m scaling_evolve.algorithms.eve.runner \
-         --config-name=circle_packing.smoke
+        uv run python -m scaling_evolve.algorithms.eve.runner \
+          --config-name=circle_packing.smoke
 
-   This runs a short circle packing demo with headless Codex agents.
+    This runs a short circle packing demo with headless Codex agents.
+
+### Math Proof quickstart
+
+To try EvE on a mathematical problem, start Codex from the repository root and
+ask it to use the Math Proof quickstart:
+
+```bash
+codex
+```
+
+```text
+Run the Math Proof quickstart for this problem:
+
+<paste the problem statement here>
+```
+
+You may ask codex for more details.
 
 ## How It Works
+
+<p align="center">
+  <img src=".github/assets/eve-overview.png" width="720">
+</p>
+<p align="center">
+  <sub><b>(a)</b> One-shot code proposal. <b>(b)</b> A coding agent works inside a repository. <b>(c)</b> EvE runs many coding agents across many candidate solutions, scores the results, and carries the useful history into the next round.</sub>
+</p>
 
 <p align="center">
   <img src=".github/assets/eve-framework.png" width="720">
@@ -122,8 +125,7 @@ during future iterations, with concrete scores that drive sampling probability.
 
 The formal procedure is given in the algorithm below.
 
-<details>
-<summary><b>Algorithm: Evolutionary Ensemble of Agents</b> (click to expand)</summary>
+<summary><b>Algorithm: Evolutionary Ensemble of Agents</b></summary>
 <br>
 <p align="center">
   <img src=".github/assets/eve-algorithm.png" width="560">
@@ -139,69 +141,6 @@ attributed to the effectiveness of each agent's strategy. After evaluation, a
 pairwise win-loss matrix is constructed and agent Elo ratings are updated.
 Agents that revised their guidance are integrated back into the population,
 preserving new strategies and their procedural evidence.
-
-</details>
-
-### Workspace Layout
-
-Each agent runs in its own workspace. A solver workspace looks like:
-
-```text
-workspace/
-├── solver/             # the solver candidate to edit; extracted as the submission
-├── guidance/           # optimizer guidance to apply and refine
-├── solver_examples/    # sampled reference solvers from the population (read-only)
-│   └── <solver_id>/
-│       ├── solver/         # that solver's files
-│       ├── logs/           # its evaluation logs
-│       └── score.yaml      # its score
-├── guidance_examples/  # sampled reference optimizer guidance (read-only)
-│   └── <optimizer_id>/
-│       ├── guidance/       # that optimizer's guidance files
-│       ├── logs/           # its logs
-│       └── score.yaml      # its score
-├── logs/               # this run's optimization and evaluation logs
-└── README.md           # workspace-specific instructions (read first)
-```
-
-The `solver_examples/` and `guidance_examples/` directories are populated from
-the active loop config before each worker run.
-
-## Quick Start
-
-### Check Your Setup
-
-Use the built-in circle packing smoke to verify that your local setup is wired
-correctly: dependencies, config composition, hooks/authentication, and the Codex
-backend all run end to end.
-
-```bash
-uv sync
-
-uv run python -m scaling_evolve.algorithms.eve.runner --config-name=circle_packing.smoke
-```
-
-This is a local setup check, not a quality benchmark.
-
-### Math Proof quickstart
-
-To try EvE on a mathematical problem, start Codex from the repository root and
-ask it to use the Math Proof quickstart:
-
-```bash
-codex .
-```
-
-```text
-Run the Math Proof quickstart for this problem:
-
-<paste the problem statement here>
-```
-
-The quickstart is a Codex operator workflow: Codex creates a local task copy
-under `examples/tmp/`, uses `configs/eve/math_proof_quickstart.yaml` with
-`application.path`, launches a real EvE attempt, and then supervises and
-inspects the run by following the bundled `run-math-proof-quickstart` skill.
 
 ## Set Up Your Own Task
 
@@ -343,48 +282,13 @@ uv run python -m scaling_evolve.algorithms.eve.runner --config-name=your_task
 See `configs/eve/circle_packing.yaml`, `configs/eve/icon.yaml`, and
 `configs/eve/math_proof_quickstart.yaml` for complete working examples.
 
-## Codex Operator Skills
-
-The [`docs/skills/`](docs/skills/) directory is the operator layer for working
-with EvE through Codex. Start Codex at the repository root, discuss the task or
-experiment you want to run, and ask it to use the relevant skill. The skills
-cover launching, supervising, resuming, importing, inspecting, debugging, and
-authoring EvE tasks; the Math Proof quickstart above is one example of this
-workflow.
-
-| Skill | Description |
-|-------|-------------|
-| [`configure-eve-driver`](docs/skills/configure-eve-driver/) | Configure driver presets and one-off interactive/debug overrides |
-| [`supervise-run`](docs/skills/supervise-run/) | Watch a live run and recover or escalate stalls |
-| [`resume-run`](docs/skills/resume-run/) | Continue the same run after a pause or interruption |
-| [`import-run`](docs/skills/import-run/) | Start a new run seeded from prior run populations |
-| [`inspect-population`](docs/skills/inspect-population/) | Inspect evolved solver and guidance populations |
-| [`debug-agent-session`](docs/skills/debug-agent-session/) | Debug a single agent rollout from its transcript |
-| [`implement-evaluation-steps`](docs/skills/implement-evaluation-steps/) | Define or update evaluation steps |
-| [`implement-check-subagent`](docs/skills/implement-check-subagent/) | Implement a sanity check subagent for the optimization phase |
-| [`implement-subagent`](docs/skills/implement-subagent/) | Implement a custom Codex subagent |
-| [`run-circle-packing-smoke`](docs/skills/run-circle-packing-smoke/) | Run a quick end-to-end smoke test |
-| [`run-math-proof-quickstart`](docs/skills/run-math-proof-quickstart/) | Run the Math Proof quickstart |
-| [`theorem-search`](docs/skills/theorem-search/) | Find and verify mathematical theorem statements and proof dependencies |
-| [`matlas-search`](docs/skills/matlas-search/) | Search published mathematical literature for theorem statements and citation metadata |
-| [`writing-skills`](docs/skills/writing-skills/) | Create or edit skills |
-
-These skills are also auto-loaded by supported agent entrypoints when working
-inside the repository.
-
-## Community
-
-Questions, feedback, or running into issues? Join our
-[Slack workspace](https://join.slack.com/t/eve-mf57726/shared_invite/zt-3xym0tp2c-IZOp3oHMh5Fp7xkQwkGlKg).
-
-## Example: ICON Context Length Generalization
+## Example: Model Positional Embedding Design
 
 Applied to [ICON](https://github.com/scaling-group/icon-core) (In-Context
 Operator Networks), EvE autonomously discovered a novel positional-encoding
 mechanism that reduced generalization error by over 80% compared to the
 hand-designed baseline, turning a catastrophic out-of-distribution failure into
-robust performance. This application uses EvE's external-repo mode with remote
-GPU evaluation. See `examples/icon/README.md` for reproduction instructions.
+robust performance. See `examples/icon/README.md` for reproduction instructions.
 
 We compare three experimental conditions, each run twice independently under
 identical compute budgets:
@@ -414,10 +318,10 @@ The complete raw search traces for all six runs (every solver's source code,
 agent conversations, guidance updates, and evaluation scores) are available in
 the [v0.1.0 release](https://github.com/scaling-group/eve/releases/tag/v0.1.0).
 
-## Papers Using EvE
+## Community
 
-EvE has been applied to a growing set of scientific problems. See
-[`docs/papers.md`](docs/papers.md) for examples, paper links, and BibTeX entries.
+Questions, feedback, or running into issues? Join our
+[Slack workspace](https://join.slack.com/t/eve-mf57726/shared_invite/zt-3xym0tp2c-IZOp3oHMh5Fp7xkQwkGlKg).
 
 ## Citation
 
@@ -434,6 +338,12 @@ Please cite our paper if you use EvE in your research:
   primaryClass  = {cs.NE}
 }
 ```
+
+## Papers Using EvE
+
+EvE has been applied to a growing set of scientific problems.
+See additional papers using EvE and their BibTeX entries in [`docs/papers.md`](docs/papers.md).
+If you use EvE in your work, we welcome pull requests to add your paper to the list.
 
 ## Acknowledgement
 
