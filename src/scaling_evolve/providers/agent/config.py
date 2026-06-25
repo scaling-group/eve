@@ -151,6 +151,14 @@ class AgentProviderConfig(StrictConfigModel):
             "experiments where you want hard enforcement without the agent knowing."
         ),
     )
+    enable_multi_agent: bool | None = Field(
+        default=None,
+        description=(
+            "Optional Codex CLI feature override. None preserves the CLI default; "
+            "True passes features.multi_agent=true; False passes "
+            "features.multi_agent=false."
+        ),
+    )
     timeout_seconds: float = Field(default=900.0, gt=0.0)
     fork_mode: Literal["native"] = "native"
     fallback_mode: Literal["summary_only"] = "summary_only"

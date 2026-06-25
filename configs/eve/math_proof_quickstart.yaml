@@ -1,0 +1,18 @@
+# The quickstart skill uses this run preset with CLI overrides for the
+# task-specific application name, application path, and label.
+
+defaults:
+  - runtime: default
+  - loop: math_proof
+  - driver: codex_max
+  - logger: many_loggers
+  - application: math_proof_quickstart
+  - optimizer: math_proof
+  - evaluation: math_proof
+  - _self_
+
+label: math-proof-quickstart
+
+logger:
+  wandb:
+    enabled: false

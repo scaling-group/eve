@@ -1,5 +1,7 @@
-"""Typed configuration models used by Eve runtime components."""
+"""Typed configuration helpers."""
 
 from __future__ import annotations
 
-__all__: list[str] = []
+from scaling_evolve.config.models.common import StrictConfigModel
+
+__all__ = ["StrictConfigModel"]

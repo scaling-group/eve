@@ -22,7 +22,7 @@ def test_solver_probe_uses_workspace_seed_with_real_codex_tmux_driver(
                 "banner_lines": banner_lines,
             }
         )
-        (cwd / "output" / "candidate.py").write_text(
+        (cwd / "solver" / "candidate.py").write_text(
             "VALUE = 2\n\n\ndef score() -> int:\n    return VALUE\n",
             encoding="utf-8",
         )
@@ -76,7 +76,7 @@ def test_solver_probe_uses_workspace_seed_with_real_codex_tmux_driver(
 
     assert result["agent"] == "solver"
     assert result["summary"] == "solver probe completed"
-    assert result["changed_paths"] == ["output/candidate.py"]
+    assert result["changed_paths"] == ["solver/candidate.py"]
     assert "return VALUE" in str(result["candidate"])
     assert launches[0]["pane_id"] == "%9"
     assert launches[0]["cwd"] == (tmp_path / "solver-probe").resolve()

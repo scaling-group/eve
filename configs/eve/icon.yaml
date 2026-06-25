@@ -3,24 +3,20 @@
 defaults:
   - runtime: default
   - loop: default
-  - driver: codex_tmux_icon
-  - logger: wandb
+  - driver: codex_max
+  - logger: many_loggers
   - application: icon
   - optimizer: icon
+  - evaluation: icon
   - _self_
 
-label: icon-pe-demo
+label: icon-pe
 
 loop:
   max_iterations: 15
   n_workers_phase2: 2
   n_solver_examples_phase2: 8
 
-driver:
-  reasoning_effort: medium
-  overrides:
-    solver:
-      reasoning_effort: medium
-
 logger:
-  project: eve-icon
+  wandb:
+    enabled: false

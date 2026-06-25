@@ -1,4 +1,4 @@
-"""Tests for compaction event detection."""
+"""Tests for agent transcript compaction metadata."""
 
 from __future__ import annotations
 

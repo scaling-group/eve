@@ -32,6 +32,64 @@ def _bump_fake_live_session_mtime(session_path: Path) -> None:
     os.utime(session_path, ns=(future_ns, future_ns))
 
 
+@pytest.mark.parametrize(
+    ("enable_multi_agent", "expected"),
+    [
+        (None, None),
+        (True, "features.multi_agent=true"),
+        (False, "features.multi_agent=false"),
+    ],
+)
+def test_codex_tmux_multi_agent_feature_override_is_explicit(
+    tmp_path: Path,
+    enable_multi_agent: bool | None,
+    expected: str | None,
+) -> None:
+    driver = CodexTmuxSessionDriver(
+        pane_id="%9",
+        run_root=tmp_path / "run-root",
+        enable_multi_agent=enable_multi_agent,
+    )
+
+    config_args = driver._config_override_args()  # noqa: SLF001
+
+    rendered = [arg for arg in config_args if arg.startswith("features.multi_agent=")]
+    if expected is None:
+        assert rendered == []
+    else:
+        assert rendered == [expected]
+
+
+@pytest.mark.parametrize(
+    ("codex_system_prompt_file", "expected"),
+    [
+        (None, None),
+        (
+            "/abs/CODEX_SYSTEM_PROMPT.md",
+            'model_instructions_file="/abs/CODEX_SYSTEM_PROMPT.md"',
+        ),
+    ],
+)
+def test_codex_tmux_system_prompt_override_is_explicit(
+    tmp_path: Path,
+    codex_system_prompt_file: str | None,
+    expected: str | None,
+) -> None:
+    driver = CodexTmuxSessionDriver(
+        pane_id="%9",
+        run_root=tmp_path / "run-root",
+        codex_system_prompt_file=codex_system_prompt_file,
+    )
+
+    config_args = driver._config_override_args()  # noqa: SLF001
+
+    rendered = [arg for arg in config_args if arg.startswith("model_instructions_file=")]
+    if expected is None:
+        assert rendered == []
+    else:
+        assert rendered == [expected]
+
+
 def test_codex_tmux_launch_config_uses_workspace_hooks(
     monkeypatch,
     tmp_path: Path,

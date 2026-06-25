@@ -11,5 +11,9 @@ You don't need to look into the py or yaml file, just run it.
 uv run python -m scaling_evolve.algorithms.eve.runner --config-name=circle_packing.smoke
 ```
 
+This uses `configs/eve/driver/codex_smoke.yaml`. It is a runtime validation entrypoint,
+not a quality benchmark. Use `circle_packing` without the `.smoke` suffix for the
+full max-driver run.
+
 If you want to test with your own task (usually when you are using Eve loop for downstream tasks),
 you should change the config name accordingly. You may refer to other skills or confirm with the user.

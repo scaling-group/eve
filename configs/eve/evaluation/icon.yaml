@@ -1,0 +1,34 @@
+# @package _global_
+# ICON PE evaluation definition.
+
+evaluation:
+  steps:
+    - configs/eve/evaluation/icon/evaluation.sh
+  failure_score:
+    score: -10.0
+    summary: evaluation failed
+  seed_solver_score:
+    score: -0.4848178394138813
+    summary: "mean_d1_d10; mean_d1_d10=0.484818; mean_d1_d4=0.050808; d10=0.880551"
+    score_metric: mean_d1_d10
+    score_components:
+      score_metric: mean_d1_d10
+      optimized_score: -0.4848178394138813
+      score_window_demo_nums: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+      score_window_errors: [0.07026379555463791, 0.05005720630288124, 0.04321415722370148, 0.03969830274581909, 0.03908177837729454, 0.9835176467895508, 0.9559562802314758, 0.9270493388175964, 0.8587890863418579, 0.8805508017539978]
+      d1_to_d10:
+        d1: 0.07026379555463791
+        d2: 0.05005720630288124
+        d3: 0.04321415722370148
+        d4: 0.03969830274581909
+        d5: 0.03908177837729454
+        d6: 0.9835176467895508
+        d7: 0.9559562802314758
+        d8: 0.9270493388175964
+        d9: 0.8587890863418579
+        d10: 0.8805508017539978
+      mean_d1_d4: 0.05080836545675993
+      mean_d1_d10: 0.4848178394138813
+      log_e5_over_e10: -3.114891290544464
+      d10: 0.8805508017539978
+  seed_solver_skip_evaluation: true

@@ -1,0 +1,23 @@
+# @package _global_
+# Math-proof quickstart application template.
+#
+# The quickstart skill uses this template with CLI overrides for
+# application.name and application.path.
+# Path snapshots read the local task directory directly, so quickstart runs do
+# not require committing task files first. The task subtree must keep the
+# math-proof shape: problem/problem.md plus proof/.
+
+application:
+  name: math-proof-quickstart
+  path: examples/math_proof/_quickstart
+  editable:
+    files: []
+    folders:
+      - proof
+  boundary_failure_score:
+    dimensions:
+      coverage: 0.0
+      correctness: 0.0
+      dependency: 0.0
+      clarity: 0.0
+      strategy: 0.0

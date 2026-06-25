@@ -1,0 +1,21 @@
+# @package _global_
+# Jensen-covering math-proof application.
+#
+# Archive the Jensen example subtree as the solver snapshot so the workspace
+# has the math-proof shape: solver/problem/ and solver/proof/.
+
+application:
+  name: math-proof-jensen-covering
+  github_url: file://${hydra:runtime.cwd}
+  commit: HEAD:examples/math_proof/jensen_covering
+  editable:
+    files: []
+    folders:
+      - proof
+  boundary_failure_score:
+    dimensions:
+      coverage: 0.0
+      correctness: 0.0
+      dependency: 0.0
+      clarity: 0.0
+      strategy: 0.0

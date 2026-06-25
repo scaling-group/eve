@@ -450,7 +450,7 @@ class AgentProvider:
     def _write_workspace_claude_settings(self, workspace_root: Path) -> None:
         claude_dir = workspace_root / ".claude"
         claude_dir.mkdir(parents=True, exist_ok=True)
-        hook_command = workspace_hook_command()
+        hook_command = self._workspace_hook_command()
         settings = {
             "hooks": {
                 "PreToolUse": [
@@ -506,6 +506,9 @@ class AgentProvider:
             json.dumps(payload, indent=2) + "\n",
             encoding="utf-8",
         )
+
+    def _workspace_hook_command(self) -> str:
+        return workspace_hook_command()
 
     def _python_execution_policy(self) -> PythonExecutionPolicy:
         managed = any(
@@ -565,7 +568,7 @@ class AgentProvider:
         section = "\n".join(
             [
                 start_marker,
-                "## Eve Recovery",
+                "## Scaling Evolve Recovery",
                 "",
                 "If you don't remember the current code state, read `./candidate.py`.",
                 "If you need evolution history, read `.context_snapshot.json`.",

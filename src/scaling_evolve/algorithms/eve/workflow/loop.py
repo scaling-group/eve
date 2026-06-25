@@ -3,14 +3,14 @@
 from __future__ import annotations
 
 import logging
-import sqlite3
-from pathlib import Path
 
 from omegaconf import DictConfig
 
 from scaling_evolve.algorithms.eve.logger import EveLogger
 from scaling_evolve.algorithms.eve.populations.base import Population
 from scaling_evolve.algorithms.eve.populations.entry import PopulationEntry
+from scaling_evolve.algorithms.eve.runtime.resume import EveCheckpoint, write_checkpoint
+from scaling_evolve.algorithms.eve.runtime.snapshots import write_lineage_snapshots
 from scaling_evolve.algorithms.eve.workflow.evaluation import SolverEvaluator
 from scaling_evolve.algorithms.eve.workflow.phase2 import Phase2BatchRunner
 from scaling_evolve.algorithms.eve.workflow.phase3 import score_optimizers
@@ -28,6 +28,7 @@ class Eve:
 
     def __init__(
         self,
+        run_id: str,
         solver_pop: Population,
         optimizer_pop: Population,
         solver_workspace_builder: SolverWorkspaceBuilder,
@@ -42,6 +43,7 @@ class Eve:
         phase2_produced_optimizer_sampler: object,
         logger: EveLogger | None = None,
     ) -> None:
+        self.run_id = run_id
         self.solver_pop = solver_pop
         self.optimizer_pop = optimizer_pop
         self.solver_workspace_builder = solver_workspace_builder
@@ -56,13 +58,13 @@ class Eve:
         self.phase2_produced_optimizer_sampler = phase2_produced_optimizer_sampler
         self.logger = logger
 
-    def run(self) -> None:
+    def run(self, *, start_iteration: int = 0) -> None:
         total_solver_evals = self._ensure_seed_solver()
-        self._iterations_completed = 0
+        self._iterations_completed = start_iteration
 
-        for iteration in range(self.config.max_iterations):
+        for iteration in range(start_iteration, self.config.max_iterations):
             step = iteration + 1
-            self._snapshot_lineage_state(step - 1)
+            self._persist_iteration_boundary(step - 1)
             _LOGGER.info("Iteration %d / %d", step, self.config.max_iterations)
 
             phase2_batch_runner = Phase2BatchRunner(
@@ -107,6 +109,7 @@ class Eve:
             except Exception:
                 _LOGGER.exception("logger.on_iteration failed; continuing.")
             self._iterations_completed = step
+            self._persist_iteration_boundary(step)
 
         _LOGGER.info("Eve finished. Total solver evaluations: %d", total_solver_evals)
 
@@ -133,40 +136,24 @@ class Eve:
     def _step_log_dir(iteration: int) -> str:
         return f"step_{iteration}"
 
-    def _snapshot_lineage_state(self, anchor_iteration: int) -> None:
-        if not bool(self.config.get("enable_iter_snapshots", True)):
+    def _persist_iteration_boundary(self, anchor_iteration: int) -> None:
+        # Without a lineage snapshot there is no anchor to roll back to, so the
+        # checkpoint would be unusable on resume. A snapshot is required because
+        # each iteration mutates existing rows (Phase 3 re-scores optimizer elo
+        # in place), so resume cannot be done by simply dropping new rows.
+        if not bool(self.config.get("enable_resume", True)):
             return
-
-        snapshot_root = Path(str(self.config.workspace_root)) / ".snapshots"
-        snapshot_root.mkdir(parents=True, exist_ok=True)
-        solver_snapshot = snapshot_root / f"solver_lineage_iter_{anchor_iteration}.db"
-        optimizer_snapshot = snapshot_root / f"optimizer_lineage_iter_{anchor_iteration}.db"
-
-        self._backup_sqlite_db(Path(str(self.config.solver_db_path)), solver_snapshot)
-        self._backup_sqlite_db(Path(str(self.config.optimizer_db_path)), optimizer_snapshot)
-        self._prune_old_snapshots(snapshot_root)
-
-    @staticmethod
-    def _backup_sqlite_db(source_path: Path, dest_path: Path) -> None:
-        if not source_path.exists():
-            return
-        temp_path = dest_path.with_suffix(f"{dest_path.suffix}.tmp")
-        source_conn = sqlite3.connect(f"file:{source_path}?mode=ro", uri=True)
-        dest_conn = sqlite3.connect(temp_path)
-        try:
-            source_conn.backup(dest_conn)
-        finally:
-            dest_conn.close()
-            source_conn.close()
-        temp_path.replace(dest_path)
-
-    def _prune_old_snapshots(self, snapshot_root: Path) -> None:
-        retain = int(self.config.get("iter_snapshot_retain", 3))
-        if retain <= 0:
-            return
-        for prefix in ("solver_lineage_iter_", "optimizer_lineage_iter_"):
-            snapshots = sorted(snapshot_root.glob(f"{prefix}*.db"))
-            if len(snapshots) <= retain:
-                continue
-            for snapshot_path in snapshots[:-retain]:
-                snapshot_path.unlink(missing_ok=True)
+        write_lineage_snapshots(
+            run_root=self.config.workspace_root,
+            solver_db_path=self.config.solver_db_path,
+            optimizer_db_path=self.config.optimizer_db_path,
+            anchor_iteration=anchor_iteration,
+        )
+        write_checkpoint(
+            self.config.workspace_root,
+            EveCheckpoint(
+                run_id=self.run_id,
+                last_completed_iteration=anchor_iteration,
+                max_iterations=int(self.config.max_iterations),
+            ),
+        )

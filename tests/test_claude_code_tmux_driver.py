@@ -491,7 +491,7 @@ def test_project_bucket_dir_slugifies_full_workspace_path(tmp_path: Path) -> Non
         tmp_path
         / ".runs"
         / "eve"
-        / "circle-packing"
+        / "evolve-testbed"
         / "run-20260409_025002_291960-07d5e0036e8f"
         / "solver_workspaces"
         / "20260408T185004_step_1_a42028d44652"
@@ -499,7 +499,7 @@ def test_project_bucket_dir_slugifies_full_workspace_path(tmp_path: Path) -> Non
     worktree.mkdir(parents=True)
 
     bucket = _project_bucket_dir(worktree)
+    expected_bucket_name = re.sub(r"[^A-Za-z0-9]", "-", str(worktree.resolve()))
 
-    resolved = str(worktree.resolve())
-    expected_slug = re.sub(r"[^A-Za-z0-9]", "-", resolved)
-    assert bucket.name == expected_slug
+    assert bucket == Path.home() / ".claude" / "projects" / expected_bucket_name
+    assert "solver-workspaces-20260408T185004-step-1-a42028d44652" in bucket.name

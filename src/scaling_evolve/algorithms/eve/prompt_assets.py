@@ -11,8 +11,9 @@ def read_required_prompt_text(prompt_root: Path, relative_path: str) -> str:
     if not path.is_file():
         raise FileNotFoundError(
             f"workflow-required prompt file missing: {path}. "
-            f"EvE requires `{relative_path}` under optimizer.prompt; deleting or renaming "
+            f"EvE requires `{relative_path}` under optimizer.workers.items[].prompt; "
+            "deleting or renaming "
             "this file prevents the workflow from running. Restore the file or point "
-            "optimizer.prompt at a directory that contains it."
+            "the worker prompt field at a directory that contains it."
         )
     return path.read_text(encoding="utf-8").strip()

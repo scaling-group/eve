@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import socket
 import subprocess
 import sys
@@ -39,6 +38,7 @@ from scaling_evolve.providers.agent.drivers.base import (
     SessionSeed,
     SessionSnapshot,
 )
+from scaling_evolve.providers.agent.runtime_env import prepend_agent_runtime_bins
 from scaling_evolve.providers.agent.session_log.claude_code_parser import (
     parse_claude_code_session,
 )
@@ -561,10 +561,10 @@ class ClaudeCodeSessionDriver(SessionDriver):
             )
         if provider_auth_override_configured and not self.auth_token:
             raise ValueError("Claude Code provider overrides require an auth token.")
-        env = {"CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1"}
-        runtime_bin = Path(cwd) / ".agent-runtime" / "bin"
-        if runtime_bin.exists():
-            env["PATH"] = f"{runtime_bin}{os.pathsep}{os.environ.get('PATH', '')}"
+        env = prepend_agent_runtime_bins(
+            {"CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1"},
+            workspace_root=cwd,
+        )
         if self.isolate_config:
             env["CLAUDE_CONFIG_DIR"] = str(self._isolated_config_dir(cwd))
         if self.provider_base_url is not None:

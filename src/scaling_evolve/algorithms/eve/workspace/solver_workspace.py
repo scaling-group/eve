@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import random
 import shutil
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -17,15 +18,27 @@ from scaling_evolve.algorithms.eve.workflow.boundary import (
     check_workspace_boundary,
 )
 from scaling_evolve.algorithms.eve.workspace.file_tree import (
+    expose_guidance_agents,
     expose_guidance_skills,
     read_file_tree,
     write_claude_stop_hook_settings,
     write_file_tree,
-    write_project_agent_definitions,
 )
 from scaling_evolve.algorithms.eve.workspace.immutable_renderers.default import (
     DefaultRenderer,
 )
+
+
+@dataclass(frozen=True)
+class SolverWorkerConfig:
+    """Loaded prompt/immutable assets for one optimizer-side solver worker type."""
+
+    name: str
+    weight: float
+    immutable_files: dict[str, str]
+    immutable_renderer: DefaultRenderer
+    boundary_repair_prompt: str
+    rollout_prompts: dict[str, object]
 
 
 class SolverWorkspaceBuilder:
@@ -41,26 +54,69 @@ class SolverWorkspaceBuilder:
         immutable_renderer: DefaultRenderer | None = None,
         boundary_repair_prompt: str | None = None,
         rollout_prompts: dict[str, object] | None = None,
+        worker_configs: list[SolverWorkerConfig] | None = None,
         rng: random.Random | None = None,
     ) -> None:
         self.workspace_root = workspace_root
         self.workspace_root.mkdir(parents=True, exist_ok=True)
         self.problem = problem
         self.config = config
-        self.immutable_files = dict(immutable_files)
-        self.immutable_renderer = immutable_renderer or DefaultRenderer()
-        self.boundary_repair_prompt = boundary_repair_prompt
-        if self.immutable_files:
-            readme_template = self.immutable_files.get("README.md")
-            if readme_template is None:
-                raise ValueError(
-                    "immutable workspace assets must include README.md so EvE can inject "
-                    "Phase 2 runtime instructions."
+        explicit_worker_configs = worker_configs is not None
+        self.worker_configs = list(
+            worker_configs
+            if worker_configs is not None
+            else [
+                SolverWorkerConfig(
+                    name="default",
+                    weight=1.0,
+                    immutable_files=dict(immutable_files),
+                    immutable_renderer=immutable_renderer or DefaultRenderer(),
+                    boundary_repair_prompt=boundary_repair_prompt or "",
+                    rollout_prompts=rollout_prompts or {},
                 )
-            self.immutable_renderer.validate(readme_template)
-        self.rollout_prompts = rollout_prompts or {}
+            ]
+        )
+        if not self.worker_configs:
+            raise ValueError("worker_configs must contain at least one worker.")
+        for worker_config in self.worker_configs:
+            self._validate_worker_config(
+                worker_config,
+                allow_empty_immutable=not explicit_worker_configs
+                and not worker_config.immutable_files,
+                require_boundary_repair=explicit_worker_configs,
+            )
+        self.rollout_prompts = self.worker_configs[0].rollout_prompts
         self._rng = rng or random.Random()
-        self.worker_index: int | None = None
+
+    def _validate_worker_config(
+        self,
+        worker_config: SolverWorkerConfig,
+        *,
+        allow_empty_immutable: bool = False,
+        require_boundary_repair: bool = False,
+    ) -> None:
+        if worker_config.weight <= 0:
+            raise ValueError(f"worker `{worker_config.name}` weight must be positive.")
+        readme_template = worker_config.immutable_files.get("README.md")
+        if readme_template is None and allow_empty_immutable:
+            return
+        if readme_template is None:
+            raise ValueError(
+                f"worker `{worker_config.name}` immutable workspace assets must include "
+                "README.md so EvE can inject Phase 2 runtime instructions."
+            )
+        if require_boundary_repair and not worker_config.boundary_repair_prompt:
+            raise ValueError(f"worker `{worker_config.name}` requires prompt/BOUNDARY_REPAIR.md.")
+        worker_config.immutable_renderer.validate(readme_template)
+
+    def select_worker_config(self, *, worker_index: int | None = None) -> SolverWorkerConfig:
+        """Return a worker config using weighted random selection."""
+        _ = worker_index
+        return self._rng.choices(
+            self.worker_configs,
+            weights=[worker.weight for worker in self.worker_configs],
+            k=1,
+        )[0]
 
     def build(
         self,
@@ -72,6 +128,7 @@ class SolverWorkspaceBuilder:
         worker_index: int | None = None,
         prefill_solver: PopulationEntry | None = None,
         optimizer_examples: list[PopulationEntry] | None = None,
+        worker_config: SolverWorkerConfig | None = None,
     ) -> tuple[Path, PopulationEntry | None]:
         """Create a fresh solver workspace directory and populate it.
 
@@ -84,20 +141,20 @@ class SolverWorkspaceBuilder:
         Returns:
             (workspace_path, prefill_solver).
         """
-        self.worker_index = worker_index
+        _ = worker_index
         ts = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
         ws = self.workspace_root / f"{ts}_{workspace_id}"
         ws.mkdir(parents=True, exist_ok=True)
         optimizer_examples = optimizer_examples or []
         use_optimizer_examples = int(self.config.n_optimizer_examples_phase2) > 0
-        solver_examples_dirname = "solver_examples" if use_optimizer_examples else "examples"
 
         # Optimizer files
         write_file_tree(ws / "guidance", optimizer_files)
         expose_guidance_skills(ws)
+        expose_guidance_agents(ws)
 
         # Reference examples
-        examples_dir = ws / solver_examples_dirname
+        examples_dir = ws / "solver_examples"
         examples_dir.mkdir(exist_ok=True)
         for entry in solvers:
             example_dir = examples_dir / entry.id
@@ -125,7 +182,7 @@ class SolverWorkspaceBuilder:
             for entry in optimizer_examples:
                 example_dir = optimizer_examples_dir / entry.id
                 example_dir.mkdir(exist_ok=True)
-                write_file_tree(example_dir / "optimizer", entry.files)
+                write_file_tree(example_dir / "guidance", entry.files)
                 write_file_tree(example_dir / "logs", entry.logs)
                 self._write_yaml(
                     example_dir / "score.yaml",
@@ -135,33 +192,12 @@ class SolverWorkspaceBuilder:
                     },
                 )
 
-        # Prefill output/ with a base repo checkout overlaid by a randomly
+        # Prefill solver/ with a base repo checkout overlaid by a randomly
         # chosen reference example.
-        output_dir = ws / "output"
-        shutil.copytree(self.problem.snapshot_root, output_dir)
-        self._write_yaml(
-            ws / "score.yaml",
-            {
-                "optimizer_id": optimizer.id if optimizer is not None else None,
-                "sampled_optimizer_example_ids": [entry.id for entry in optimizer_examples],
-                "prefill_solver_id": (prefill_solver.id if prefill_solver is not None else None),
-                "prefill_solver_score": (
-                    prefill_solver.score if prefill_solver is not None else None
-                ),
-            },
-        )
+        solver_dir = ws / "solver"
+        shutil.copytree(self.problem.snapshot_root, solver_dir)
         if prefill_solver is not None:
-            write_file_tree(output_dir, prefill_solver.files)
-        write_project_agent_definitions(
-            ws,
-            name="check-runner",
-            claude_content=self.problem.render_check_agent_definition(
-                self.problem.check_agent_paths["claude"]
-            ),
-            codex_content=self.problem.render_check_agent_definition(
-                self.problem.check_agent_paths["codex"]
-            ),
-        )
+            write_file_tree(solver_dir, prefill_solver.files)
         write_claude_stop_hook_settings(ws)
 
         return ws, prefill_solver
@@ -174,25 +210,49 @@ class SolverWorkspaceBuilder:
         solvers: list[PopulationEntry],
         prefill_solver: PopulationEntry,
         optimizer_examples: list[PopulationEntry] | None = None,
+        worker_config: SolverWorkerConfig | None = None,
     ) -> None:
         """Copy immutable assets into a Phase 2 workspace and render README."""
-        write_file_tree(workspace, self.immutable_files)
+        worker_config = worker_config or self.worker_configs[0]
+        write_file_tree(workspace, self._render_runtime_immutable_files(worker_config))
+        self._write_worker_metadata(workspace, worker_config)
         readme_path = workspace / "README.md"
         if not readme_path.is_file():
             raise ValueError(
-                "immutable workspace assets must include README.md so EvE can inject "
-                "Phase 2 runtime instructions."
+                f"worker `{worker_config.name}` immutable workspace assets must include "
+                "README.md so EvE can inject Phase 2 runtime instructions."
             )
-        rendered_readme = self.immutable_renderer.render(
+        rendered_readme = worker_config.immutable_renderer.render(
             readme_path.read_text(encoding="utf-8"),
             problem=self.problem,
             config=self.config,
+            immutable_files=worker_config.immutable_files,
             optimizer=optimizer,
             solvers=solvers,
             prefill_solver=prefill_solver,
             optimizer_examples=optimizer_examples,
         )
         readme_path.write_text(rendered_readme.strip() + "\n", encoding="utf-8")
+
+    def _render_runtime_immutable_files(
+        self,
+        worker_config: SolverWorkerConfig,
+    ) -> dict[str, str]:
+        return {
+            path: self.problem.render_runtime_template(content)
+            for path, content in worker_config.immutable_files.items()
+        }
+
+    def _write_worker_metadata(self, workspace: Path, worker_config: SolverWorkerConfig) -> None:
+        metadata_dir = workspace / ".scaling_evolve"
+        metadata_dir.mkdir(exist_ok=True)
+        self._write_yaml(
+            metadata_dir / "worker.yaml",
+            {
+                "name": worker_config.name,
+                "weight": worker_config.weight,
+            },
+        )
 
     def entrypoint_instruction(
         self,
@@ -201,9 +261,11 @@ class SolverWorkspaceBuilder:
         solvers: list[PopulationEntry],
         prefill_solver: PopulationEntry,
         optimizer_examples: list[PopulationEntry] | None = None,
+        worker_config: SolverWorkerConfig | None = None,
     ) -> str:
         """Return the Phase 2 entrypoint instruction from the immutable renderer."""
-        return self.immutable_renderer.entrypoint(
+        worker_config = worker_config or self.worker_configs[0]
+        return worker_config.immutable_renderer.entrypoint(
             problem=self.problem,
             config=self.config,
             optimizer=optimizer,
@@ -212,52 +274,87 @@ class SolverWorkspaceBuilder:
             optimizer_examples=optimizer_examples,
         )
 
-    def boundary_repair_instruction(self, boundary_result: object) -> str:
+    def boundary_repair_instruction(
+        self,
+        boundary_result: object,
+        *,
+        worker_config: SolverWorkerConfig | None = None,
+    ) -> str:
         """Return the configured boundary-repair instruction plus runtime summary."""
-        if self.boundary_repair_prompt is None:
+        worker_config = worker_config or self.worker_configs[0]
+        if not worker_config.boundary_repair_prompt:
             raise ValueError(
                 "prompt/BOUNDARY_REPAIR.md is required before EvE can repair boundary "
-                "violations. Load it from optimizer.prompt and pass it to the workspace builder."
+                "violations. Load it from optimizer.workers.items[].prompt and pass it "
+                "to the workspace builder."
             )
-        return "\n".join([self.boundary_repair_prompt.strip(), "", boundary_result.summary()])
+        return "\n".join(
+            [worker_config.boundary_repair_prompt.strip(), "", boundary_result.summary()]
+        )
 
     def extract(self, workspace: Path) -> dict[str, str]:
-        """Read the editable candidate files from workspace output/.
+        """Read the editable candidate files from workspace solver/.
 
         Raises:
-            FileNotFoundError: if output/ directory is missing.
+            FileNotFoundError: if solver/ directory is missing.
             ValueError: if any editable file is missing.
         """
-        output_dir = workspace / "output"
-        if not output_dir.exists():
-            raise FileNotFoundError(f"output/ directory not found in {workspace}")
+        solver_dir = workspace / "solver"
+        if not solver_dir.exists():
+            raise FileNotFoundError(f"solver/ directory not found in {workspace}")
         files: dict[str, str] = {}
         for rel_path in self.problem.editable_files:
-            path = output_dir / rel_path
+            path = solver_dir / rel_path
             if not path.exists():
-                raise ValueError(f"editable file {rel_path} is missing in {output_dir}")
+                raise ValueError(f"editable file {rel_path} is missing in {solver_dir}")
             files[rel_path] = path.read_text(encoding="utf-8")
         for folder in self.problem.editable_folders:
-            folder_root = output_dir / folder
+            folder_root = solver_dir / folder
             if not folder_root.exists():
                 continue
             for rel_path, content in read_file_tree(folder_root).items():
                 files[str(Path(folder) / rel_path)] = content
         return files
 
-    def extract_optimizer(self, workspace: Path) -> dict[str, str]:
+    def extract_optimizer(
+        self,
+        workspace: Path,
+        *,
+        worker_config: SolverWorkerConfig | None = None,
+    ) -> dict[str, str]:
         """Read the optional Phase 2 optimizer artifact from guidance/."""
         optimizer_dir = workspace / "guidance"
         if not optimizer_dir.exists():
             return {}
-        return read_file_tree(optimizer_dir)
+        files = read_file_tree(optimizer_dir)
+        overlay_paths = self._immutable_guidance_overlay_paths(
+            worker_config or self.worker_configs[0]
+        )
+        return {path: content for path, content in files.items() if path not in overlay_paths}
+
+    @staticmethod
+    def _immutable_guidance_overlay_paths(worker_config: SolverWorkerConfig) -> set[str]:
+        """Return guidance paths overwritten by immutable files through symlinked surfaces."""
+        overlay_paths: set[str] = set()
+        prefixes = (
+            (".codex/skills/", "skills/"),
+            (".claude/skills/", "skills/"),
+            (".codex/agents/", "agents/codex/"),
+            (".claude/agents/", "agents/claude/"),
+        )
+        for path in worker_config.immutable_files:
+            for source_prefix, guidance_prefix in prefixes:
+                if path.startswith(source_prefix):
+                    overlay_paths.add(guidance_prefix + path.removeprefix(source_prefix))
+                    break
+        return overlay_paths
 
     def boundary_check_result(self, workspace: Path) -> BoundaryCheckResult:
-        """Return the boundary-check result for workspace output/."""
-        output_dir = workspace / "output"
+        """Return the boundary-check result for workspace solver/."""
+        solver_dir = workspace / "solver"
         return check_workspace_boundary(
             baseline_root=self.problem.snapshot_root,
-            candidate_root=output_dir,
+            candidate_root=solver_dir,
             editable={
                 "files": self.problem.editable_files,
                 "folders": self.problem.editable_folders,
@@ -271,47 +368,21 @@ class SolverWorkspaceBuilder:
         optimize_logs: dict[str, str],
         evaluate_logs: dict[str, str],
     ) -> dict[str, str]:
-        """Persist current-run logs into the workspace and return the same log tree.
+        """Persist current-run optimize logs and return the full entry log tree.
 
-        The returned mapping matches the persisted solver entry log shape.
+        Evaluation runs in a separate workspace. Its logs are included in the
+        returned population-entry log tree, but are not copied back into this
+        Phase 2 solver workspace.
         """
         logs = {
             **{f"optimize/{path}": content for path, content in optimize_logs.items()},
             **{f"evaluate/{path}": content for path, content in evaluate_logs.items()},
         }
-        write_file_tree(workspace / "logs", logs)
-        return logs
-
-    def write_score_manifest(
-        self,
-        workspace: Path,
-        *,
-        sampled_solvers: list[PopulationEntry],
-        optimizer: PopulationEntry | None = None,
-        sampled_optimizers: list[PopulationEntry] | None = None,
-        prefill_solver: PopulationEntry | None,
-        produced_solver: PopulationEntry,
-    ) -> None:
-        """Persist workspace-level score metadata."""
-        self._write_yaml(
-            workspace / "score.yaml",
-            {
-                "sampled_solver_examples": [
-                    {
-                        "example_id": entry.id,
-                        "score": entry.score,
-                    }
-                    for entry in sampled_solvers
-                ],
-                "optimizer_id": optimizer.id if optimizer is not None else None,
-                "sampled_optimizer_example_ids": [entry.id for entry in (sampled_optimizers or [])],
-                "prefill_solver_id": prefill_solver.id if prefill_solver is not None else None,
-                "produced_solver": {
-                    "solver_id": produced_solver.id,
-                    "score": produced_solver.score,
-                },
-            },
+        write_file_tree(
+            workspace / "logs",
+            {f"optimize/{path}": content for path, content in optimize_logs.items()},
         )
+        return logs
 
     def build_phase2_optimizer_log_tree(
         self,

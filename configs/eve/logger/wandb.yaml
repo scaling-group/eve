@@ -1,10 +1,9 @@
 # @package _group_
-# WandB logger — enabled
+# W&B logger. Disabled by default; enable explicitly for a run.
 
 _target_: scaling_evolve.algorithms.eve.logger.WandbEveLogger
-enabled: true
+enabled: false
 project: eve
-# Set to your wandb entity (organization or username).
 entity: null
 excluded_score_fields:
   - info

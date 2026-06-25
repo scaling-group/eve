@@ -1,0 +1,17 @@
+# @package _global_
+# Minimal Codex non-interactive driver for fast runtime validation.
+
+driver:
+  driver: codex_exec
+  executable: codex
+  model: gpt-5.4-mini
+  reasoning_effort: low
+  rollout_max_turns: 10
+  web_search: disabled
+  timeout_seconds: 900
+  overrides:
+    solver:
+      reasoning_effort: low
+    eval:
+      model: gpt-5.4-mini
+      reasoning_effort: low

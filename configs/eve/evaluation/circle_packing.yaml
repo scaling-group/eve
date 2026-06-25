@@ -1,0 +1,12 @@
+# @package _global_
+# Default single-step evaluation for circle_packing: the original programmatic evaluator
+# (evaluate.py wrapper), relocated from application/ into the evaluation/ tree.
+# The judge pipeline lives in configs/eve/evaluation/circle_packing.judge.yaml.
+evaluation:
+  steps:
+    - configs/eve/evaluation/circle_packing/evaluation.sh
+  failure_score:
+    score: 0.0
+    summary: evaluation failed
+  seed_solver_score: null
+  seed_solver_skip_evaluation: false

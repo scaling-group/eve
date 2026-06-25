@@ -16,13 +16,14 @@ class _FakeRun:
 class _FakeSdk:
     def __init__(self) -> None:
         self.run = _FakeRun()
+        self.init_kwargs: dict[str, object] | None = None
         self.logged: list[tuple[dict[str, object], int | None]] = []
         self.metrics: list[tuple[str, str | None, str | None]] = []
         self.finished = False
         self.tables: list[_FakeTable] = []
 
     def init(self, **kwargs: object) -> _FakeRun:
-        _ = kwargs
+        self.init_kwargs = kwargs
         return self.run
 
     def define_metric(
@@ -54,6 +55,24 @@ class _FakeTable:
         self.data.append(list(row))
 
 
+def test_best_projectable_entry_skips_vector_scores() -> None:
+    # A vector score (multiple numeric leaves, no `score`) cannot project to a scalar via
+    # preferred_key="score"; the logger's best-entry tracking must skip it rather than crash,
+    # so vector-selection runs (no headline `score`) log cleanly.
+    vector_a = PopulationEntry(
+        id="a", files={}, score={"performance": 0.9, "scientific": 0.2}, logs={}
+    )
+    vector_b = PopulationEntry(
+        id="b", files={}, score={"performance": 0.1, "scientific": 0.8}, logs={}
+    )
+    # All-vector entries -> no scalar projection -> None (best-tracking gracefully skipped).
+    assert WandbEveLogger._best_projectable_entry([vector_a, vector_b], "score") is None
+    # A scalar-scored entry is still selected over un-projectable vector entries.
+    scalar_c = PopulationEntry(id="c", files={}, score={"score": 0.5}, logs={})
+    best = WandbEveLogger._best_projectable_entry([vector_a, scalar_c, vector_b], "score")
+    assert best is not None and best.id == "c"
+
+
 def test_wandb_eve_logger_disabled_skips_sdk_load(monkeypatch) -> None:
     def _unexpected_load() -> None:
         raise AssertionError("wandb SDK should not load when logger is disabled")
@@ -72,6 +91,25 @@ def test_wandb_eve_logger_disabled_skips_sdk_load(monkeypatch) -> None:
 
     assert logger._sdk is None
     assert logger._run is None
+
+
+def test_wandb_eve_logger_uses_public_safe_default_project(monkeypatch) -> None:
+    fake_sdk = _FakeSdk()
+    monkeypatch.setattr(
+        "scaling_evolve.algorithms.eve.logger.wandb._load_wandb_sdk",
+        lambda: fake_sdk,
+    )
+
+    WandbEveLogger(
+        run_id="run-public-defaults",
+        full_config={"logger": {"enabled": True}},
+        enabled=True,
+        excluded_score_fields=[],
+    )
+
+    assert fake_sdk.init_kwargs is not None
+    assert fake_sdk.init_kwargs["project"] == "eve"
+    assert fake_sdk.init_kwargs["entity"] is None
 
 
 def test_wandb_eve_logger_logs_phase2(monkeypatch) -> None:
@@ -157,7 +195,6 @@ def test_wandb_eve_logger_logs_phase2(monkeypatch) -> None:
             workspace_id="workspace-b",
         ),
     ]
-
     logger.on_iteration(
         iteration=3,
         solver_entries=[

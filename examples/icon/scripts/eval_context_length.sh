@@ -7,7 +7,7 @@
 #PBS -l walltime=01:00:00
 #PBS -l select=1:ngpus=1
 
-# Context length generalization eval — offline, checkpoint-based.
+# Context length generalization eval - offline, checkpoint-based.
 # Single GPU, no training, no W&B logging.
 #
 # Usage:

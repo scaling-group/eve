@@ -45,6 +45,7 @@ from scaling_evolve.providers.agent.drivers.base import (
     SessionSeed,
     SessionSnapshot,
 )
+from scaling_evolve.providers.agent.runtime_env import prepend_agent_runtime_bins
 
 _WORKSPACE_EXCLUDE_DIRS = {".codex-driver-home", ".codex-driver-transcripts", ".git"}
 
@@ -79,8 +80,10 @@ class CodexExecSessionDriver(SessionDriver):
         reasoning_effort: str = "low",
         rollout_max_turns: int = 200,
         budget_prompt: bool = True,
+        enable_multi_agent: bool | None = None,
         timeout_seconds: float = 900.0,
         personality: str | None = None,
+        codex_system_prompt_file: str | None = None,
         role: str | None = None,
         web_search: str = "disabled",
         token_pricing: TokenPricing | None = None,
@@ -95,8 +98,11 @@ class CodexExecSessionDriver(SessionDriver):
         self.reasoning_effort = reasoning_effort
         self.rollout_max_turns = rollout_max_turns
         self.budget_prompt = budget_prompt
+        self.enable_multi_agent = enable_multi_agent
         self.timeout_seconds = timeout_seconds
         self.personality = personality
+        # Overrides Codex's built-in system prompt; None keeps the default.
+        self.codex_system_prompt_file = codex_system_prompt_file
         self.role = role
         self.web_search = web_search if web_search in {"disabled", "live", "cached"} else "disabled"
         self.token_pricing = resolve_token_pricing(model, token_pricing, pricing_table)
@@ -226,7 +232,10 @@ class CodexExecSessionDriver(SessionDriver):
         raw_command_result = self._run_command(
             command=argv,
             cwd=worktree_root,
-            env={**self.provider_env, **isolated_home.env()},
+            env=prepend_agent_runtime_bins(
+                {**self.provider_env, **isolated_home.env()},
+                workspace_root=worktree_root,
+            ),
             stdout_live_path=driver_stdout_live_path,
         )
         command_result = (
@@ -435,6 +444,14 @@ class CodexExecSessionDriver(SessionDriver):
         ]
         if self.personality is not None:
             overrides.append(("personality", self.personality))
+        if self.codex_system_prompt_file is not None:
+            # `model_instructions_file` is Codex's native config key for overriding
+            # its built-in system prompt; keep that literal so the CLI accepts it.
+            overrides.append(
+                ("model_instructions_file", str(Path(self.codex_system_prompt_file).expanduser()))
+            )
+        if self.enable_multi_agent is not None:
+            overrides.append(("features.multi_agent", self.enable_multi_agent))
         if self.model_provider is not None:
             overrides.append(("model_provider", self.model_provider))
         for provider_id, provider_config in self.model_providers.items():

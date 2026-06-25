@@ -14,13 +14,10 @@ runs/
 artifacts/
 /storage/
 .tmp/
+/.agent-runtime/
 .env
 .env.*
-!.env.example
 .experiment-claude-config/
-.claude-driver-transcripts/
-.codex/*
-!.codex/skills
 *.o*
 /wandb/
 
@@ -32,5 +29,10 @@ docs/superpowers/
 # Stream-json probe fixtures (large JSONL, local testing only)
 tests/fixtures/stream_json_probes/
 
-**/.DS_Store
-.vscode/
+/.codex/
+
+# ignore temporary tests
+examples/tmp/
+
+#------------------------------------------
+# Write Project-Specific Git Ignore Below #

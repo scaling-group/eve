@@ -2,9 +2,14 @@
 # Circle packing optimizer definition
 
 optimizer:
-  initial_optimizer: configs/eve/optimizer/circle_packing/initial_optimizer
-  immutable: configs/eve/optimizer/circle_packing/immutable
-  prompt: configs/eve/optimizer/circle_packing/prompt
+  initial_guidance: configs/eve/optimizer/circle_packing/initial_guidance
+  workers:
+    selection: random
+    items:
+      - name: normal
+        weight: 1.0
+        immutable: configs/eve/optimizer/circle_packing/immutable
+        prompt: configs/eve/optimizer/circle_packing/prompt
   immutable_renderer:
     _target_: scaling_evolve.algorithms.eve.workspace.immutable_renderers.default.DefaultRenderer
   evaluation:

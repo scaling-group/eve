@@ -1,4 +1,4 @@
-"""Public package surface for Eve."""
+"""Public package surface for EvE."""
 
 from scaling_evolve._version import __version__
 

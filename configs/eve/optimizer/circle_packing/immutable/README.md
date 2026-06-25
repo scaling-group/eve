@@ -1,15 +1,15 @@
-# Evolutionary Ensemble (EvE) Overview
+# README
 
-## Core Concepts
+## Evolutionary Ensemble (EvE): Core Concepts
 
 EvE maintains two coupled populations:
 
-- `solver`: code or files that directly work on the downstream task repo. In
-  Phase 2, the agent edits a solver candidate inside `output/` and that
-  candidate is then evaluated on the concrete task.
-- `optimizer`: markdown guidance files that improve solvers, including
-  description, skills, suggestions, etc. They will be applied into a
-  Phase 2 workspace to help the solver-optimization agent.
+- `solver`: code or other files that directly work on the downstream task repo.
+  The agent edits a solver candidate inside `solver/`, and that candidate is
+  then evaluated on the concrete task.
+- `optimizer`: markdown/toml guidance files that improve solvers, including
+  prompts, notes, workflows, skill files, subagent files, etc. They are applied
+  into a workspace to help the solver-optimization agent.
 
 The loop runs in three phases:
 
@@ -17,115 +17,128 @@ The loop runs in three phases:
    populations.
 2. Phase 2 applies each sampled optimizer to sampled solver examples to produce
    a new solver candidate, and optionally a revised optimizer in the same step,
-   then evaluates the solver candidate on the task.
+   then evaluates that candidate on the task.
 3. Phase 3 updates optimizer scores from the relative performance of the solver
    candidates produced in Phase 2.
 
 ## Workspace
 
-### Terminology
+In this document, all paths are relative to the current workspace root unless
+stated otherwise.
 
-- `run root`: the outer Eve run directory for one whole experiment. It contains run-level artifacts such as databases, artifact stores, and all per-phase workspaces. Agents do not work directly in the run root.
-- `phase workspace root`: the directory for one concrete Phase 2 agent run. When these instructions say `guidance/`, the reference example directories, `output/`, `logs/`, `README.md`, or `score.yaml`, they mean paths relative to the current phase workspace root.
-- `output/`: the submission tree inside the current phase workspace root. Files under `output/` are the candidate result that will be extracted after the run.
-- `logs/optimize/`: the optimization log directory inside the current phase workspace root. Use it for notes, intermediate artifacts, and debugging material that should be preserved as run logs, but should not become part of the candidate submission under `output/`.
-
-### Solver Workspace (Phase 2)
+You should strictly work in the current workspace, which looks like the following.
 
 ```text
-phase_workspace_root/
+workspace_root/
 ├── AGENTS.md        ← workspace agent instructions
 ├── CLAUDE.md        ← workspace agent instructions
 ├── README.md        ← workspace-specific notes, must read.
-├── guidance/        ← optimizer guidance files copied from the selected optimizer
-│   └── skills/      ← optional skill tree; exposed through `.claude/skills`
-│                       and `.codex/skills`
+├── guidance/        ← optimizer guidance files.
+│   ├── skills/      ← skill tree exposed through `.claude/skills`
+│   │                   and `.codex/skills`
+│   ├── agents/      ← subagent trees exposed through `.claude/agents`
+│   │   ├── claude/      and `.codex/agents`
+│   │   └── codex/
+│   └── other files  ← other optimizer guidance notes/docs, please read.
 ├── .claude/
-│   ├── agents/
-│   │   └── check-runner.md   ← predefined Claude check sub-agent, copied from config
+│   ├── agents -> ../guidance/agents/claude
 │   └── skills -> ../guidance/skills
 ├── .codex/
-│   ├── agents/
-│   │   └── check-runner.toml ← predefined Codex check sub-agent, copied from config
+│   ├── agents -> ../guidance/agents/codex
 │   └── skills -> ../guidance/skills
-├── solver_examples/ ← sampled reference solvers when
-│                       `n_optimizer_examples_phase2 > 0`
+├── solver_examples/ ← sampled reference solvers from the population
 │   └── <solver_id>/
-│       ├── solver/   ← editable files from that solver example
+│       ├── solver/   ← files from that solver example
 │       ├── logs/     ← logs for that solver example
 │       │   └── evaluate/     ← only evaluation logs are kept here
 │       └── score.yaml ← evaluation score for that example
-├── guidance_examples/ ← sampled reference optimizers when
-│                         `n_optimizer_examples_phase2 > 0`
+├── guidance_examples/ ← sampled reference optimizers
 │   └── <optimizer_id>/
-│       ├── optimizer/ ← optimizer files
+│       ├── guidance/ ← that optimizer's guidance files
 │       ├── logs/      ← optimizer logs copied from storage
 │       └── score.yaml ← current optimizer score
-├── examples/        ← sampled reference solvers when
-│                       `n_optimizer_examples_phase2 <= 0`
-│   └── <solver_id>/
-│       ├── solver/   ← editable files from that solver example
-│       ├── logs/     ← logs for that solver example
-│       │   └── evaluate/     ← only evaluation logs are kept here
-│       └── score.yaml ← evaluation score for that example
-├── output/          ← downstream task repo; editable files are prefilled
-│                       from a solver in the active solver example directory.
-│                       This is the submission tree.
+├── solver/          ← downstream task repo; editable files are prefilled.
 ├── logs/
-│   ├── optimize/    ← free-form log tree from this Phase 2 optimization run
-│   └── evaluate/    ← free-form log tree from evaluating the produced candidate
-└── score.yaml       ← scores for the sampled solvers, the prefill solver, and the
-                        produced solver
+│   └── optimize/    ← free-form log tree from this Phase 2 optimization run
 ```
 
-### Phase Workspace Lifecycle
+You can modify the following parts in this workspace. Other files are read-only.
 
-Each phase workspace directory is named `<timestamp>_<id>` and is never deleted
-after use. All phase workspaces accumulate on disk and can be inspected after
-the fact.
+1. solver
 
-```text
-1. Build    fetch files and logs from database
-
-2. Run      agent session executes in this directory
-
-3. Extract  read output file(s) from the directory
-            store as new entry in the database
-```
-
-If the agent exhausts its token budget without producing a valid output, step 3
-is skipped and the run is recorded as failed in the database. The phase
-workspace directory is retained either way.
-
-# Workspace Notes
-
-Current phase: Phase 2 solver and optimizer optimization.
+You may modify any editable files/folders within `solver/`. Other files inside
+`solver/` are read-only.
 
 {editable_files_block}
 {editable_folders_block}
 
+2. optimizer guidance files
+
+Optimizer guidance lives in the `guidance/` folder.
+
+Guidance exposure:
+- `guidance/skills/` is symlinked as `.claude/skills` and `.codex/skills`.
+- `guidance/agents/claude/` is symlinked as `.claude/agents`.
+- `guidance/agents/codex/` is symlinked as `.codex/agents`.
+
+New or edited guidance skills and agents are visible through those symlinks
+during the current and future EvE iterations.
+
+The whole `guidance/` folder is editable, including ordinary guidance files,
+`guidance/skills/`, and `guidance/agents/`, except the following read-only
+immutable overlay files:
+
+{immutable_overlay_block}
+
+Use existing guidance skills and subagents when they help. When you learn
+something reusable, update the most appropriate part of `guidance/`: ordinary
+notes/docs for general strategy, `guidance/skills/` for reusable workflows or
+skills, and `guidance/agents/` for specialist roles. These skills and agents
+will be exposed through the provider symlinks.
+
+3. optimization log
+
+You can write ad hoc optimization notes, intermediate artifacts, or debugging
+material into `logs/optimize/` while you work. The main program preserves that
+directory separately as run logs.
+
 ## Your Task
 
-Treat `guidance/` as the current supporting guidance.
+Current phase: Phase 2 solver and optimizer optimization.
 
-Your primary goal is to produce an improved solver candidate in `output/`. You should also improve the files in `guidance/` to distill your experience.
+You have two goals:
 
-In this document, all paths are relative to the current phase workspace root unless stated otherwise. `output/` is the solver submission tree. `guidance/` is the optimizer-guidance tree for this phase workspace. `logs/optimize/` is a sibling optimization log directory under the same phase workspace root.
+1. Work hard to produce an improved Circle Packing solver candidate in
+   `solver/`, using the guidance files, skills, and subagents in `guidance/` as
+   active support rather than background context. Higher solver score is better.
+2. Improve files in `guidance/` when your work reveals reusable guidance that
+   would help the current and future iterations.
 
-**MANDATORY:** Before you stop, you MUST invoke the predefined `check-runner` sub-agent from `.claude/agents/check-runner.md` or `.codex/agents/check-runner.toml`, depending on which runtime you are using. Have it execute its configured check workflow from the workspace root. The check-runner will provide necessary sanity checks without formal evaluation. Do NOT finish without running this check. If anything fails, repair the output and rerun the check until it passes.
+**MANDATORY:** Before you stop, you MUST invoke the predefined `check-runner`
+sub-agent from `.claude/agents/check-runner.md` or
+`.codex/agents/check-runner.toml`, depending on which runtime you are using.
+Have it execute its configured check workflow from the workspace root. The
+check-runner will provide necessary sanity checks without formal evaluation. Do
+NOT finish without running this check. If anything fails, repair the output and
+rerun the check until it passes.
 
-Write any important optimization notes, intermediate artifacts, or debugging material directly into `logs/optimize/` while you work. The main program will preserve that directory as collected run logs and save your final response there.
-
-Do not ask the human for clarification, approval, or feedback at any point during this run. Do the work autonomously, finish your edits, provide your final summary, and stop.
-
-`output/` is pre-filled with the files from one of the reference examples. You may modify any editable files/folders within `output/`. You may also modify optimizer files inside `guidance/`. When you are satisfied, the editable files in `output/` will be extracted as the solver candidate submission, changed files in `guidance/` may be extracted as a new optimizer candidate, and `logs/optimize/` will be preserved separately as run logs.
+Do not ask the human for clarification, approval, or feedback at any point during
+this run. Do the work autonomously, finish your edits, provide your final
+summary, and stop.
 
 ## Reference Solver Examples
+
+Before editing, read the reference solver examples together with their
+`logs/evaluate/` outputs. Do not rely on `score.yaml` alone; use evaluation logs
+to identify rewarded packing moves, penalized failure modes, and reusable repair
+strategies.
+
+Also read the sampled optimizer examples, especially their `guidance/` files, to
+identify reusable strategies and guidance improvements.
 
 You have a few reference example(s). Their score cards are shown below:
 
 {solver_examples_block}
-
 {optimizer_examples_block}
 
 ## Score Semantics

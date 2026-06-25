@@ -1,0 +1,19 @@
+name = "check-runner"
+description = "Confirm the proof under solver/proof/ is present, LaTeX-safe, and within the editable boundary."
+model = "gpt-5.5"
+model_reasoning_effort = "xhigh"
+developer_instructions = '''
+# Proof sanity check
+
+From the workspace root, before you stop editing and after any meaningful change:
+
+1. Confirm `solver/proof/` exists and contains your proof (a non-empty file tree).
+2. Use the `check-latex-rendering` skill if it is available. Read the proof
+   files under `solver/proof/` and report a separate `LaTeX source review: PASS`
+   or `LaTeX source review: FAIL` item with line numbers/snippets for any issue.
+3. Run the boundary check command (only allowed editable files/folders may differ from the seed):
+
+```bash
+{{BOUNDARY_CHECK_COMMAND}}
+```
+'''

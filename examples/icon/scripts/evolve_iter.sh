@@ -7,7 +7,7 @@
 #PBS -l walltime=01:00:00
 #PBS -l select=1:ngpus=2
 
-# Vanilla ICON evolve iter — 10000 steps, 2x GPU DDP.
+# Vanilla ICON evolve iter - 10000 steps, 2x GPU DDP.
 
 set -eo pipefail
 
@@ -18,14 +18,21 @@ source ~/.bashrc
 set -euo pipefail
 
 export PROJECT_ROOT="${REPO_ROOT}"
-if [[ -f "${REPO_ROOT}/scripts/wandb_env.sh" ]]; then
-  source "${REPO_ROOT}/scripts/wandb_env.sh"
+LOGGER_ARGS=(logger=csv)
+if [[ -n "${WANDB_ENTITY:-}" ]]; then
+  export WANDB_PROJECT="${WANDB_PROJECT:-icon-pe}"
+  export WANDB_GROUP="${WANDB_GROUP:-icon-pe-evolve-iter}"
+  export WANDB_JOB_TYPE="${WANDB_JOB_TYPE:-iter}"
+  export WANDB_DIR="${WANDB_DIR:-/scratch/${USER}/cache/wandb}"
+  mkdir -p "${WANDB_DIR}"
+  LOGGER_ARGS=(
+    logger=wandb
+    log_project="${WANDB_PROJECT}"
+    +logger.wandb.entity="${WANDB_ENTITY}"
+    logger.wandb.group="${WANDB_GROUP}"
+    logger.wandb.job_type="${WANDB_JOB_TYPE}"
+  )
 fi
-export WANDB_PROJECT="${WANDB_PROJECT:-icon-pe}"
-export WANDB_GROUP="${WANDB_GROUP:-icon-pe-evolve-iter}"
-export WANDB_JOB_TYPE="${WANDB_JOB_TYPE:-iter}"
-export WANDB_DIR="${WANDB_DIR:-/scratch/${USER}/cache/wandb}"
-mkdir -p "${WANDB_DIR}"
 
 PYTHON_BIN="${EVE_REMOTE_PYTHON:-/scratch/${USER}/envs/venvs/icon-core/bin/python}"
 if [[ -x "${PYTHON_BIN}" ]]; then
@@ -66,11 +73,7 @@ echo "== gpu =="; nvidia-smi -L || true
   data.num_workers="${NUM_WORKERS}" \
   paths.data_dir="${DATA_DIR}" \
   paths.log_dir="${LOG_DIR}" \
-  logger=wandb \
-  log_project="${WANDB_PROJECT}" \
-  +logger.wandb.entity="${WANDB_ENTITY}" \
-  logger.wandb.group="${WANDB_GROUP}" \
-  logger.wandb.job_type="${WANDB_JOB_TYPE}" \
+  "${LOGGER_ARGS[@]}" \
   tags="[icon,weno,evolve,pe]" \
   experiment=evolve_base
 

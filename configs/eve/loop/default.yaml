@@ -5,11 +5,10 @@ loop:
   max_iterations: 25
   n_workers_phase2: 2
   n_solver_examples_phase2: 4
-  n_optimizer_examples_phase2: 4 # See `_build_worker_optimizer_examples`.
+  n_optimizer_examples_phase2: 4  # See `_build_worker_optimizer_examples`.
   produce_optimizer_in_phase2: ${loop.n_workers_phase2}
   boundary_repair_attempts: 3
-  enable_iter_snapshots: true
-  iter_snapshot_retain: 3
+  enable_resume: true  # write checkpoints and lineage snapshots for same-run resume
   sampling:
     # Phase 2 worker optimizers. Sample from the full optimizer population,
     # ranked by each optimizer entry's own score (typically Elo).

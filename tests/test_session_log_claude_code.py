@@ -126,7 +126,7 @@ def test_build_session_log_markdown_for_claude_transcript(tmp_path: Path) -> Non
     assert "ignore me" not in markdown
 
 
-def test_build_session_log_markdown_for_claude_tmux_transcript_uses_claude_parser(
+def test_build_session_log_markdown_for_tmux_transcript_uses_claude_parser(
     tmp_path: Path,
 ) -> None:
     transcript_path = tmp_path / "claude-tmux.jsonl"
