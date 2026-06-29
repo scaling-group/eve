@@ -34,16 +34,13 @@ from scaling_evolve.algorithms.eve.problem.repo import RepoTaskProblem
 
 
 class ImmutableRenderer:
-    """Render immutable README templates and the agent entrypoint instruction."""
+    """Render immutable templates and the agent entrypoint instruction."""
 
-    README_MARKERS: dict[str, str] = {
-        "{editable_files_block}": "the editable file list for the current application",
-        "{editable_folders_block}": "the editable folder list for the current application",
-        "{solver_examples_block}": "runtime solver examples and their score cards",
-        "{optimizer_examples_block}": "runtime optimizer examples and their score cards",
-    }
-
-    def __init__(self, *, entrypoint: str | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        entrypoint: str | None = None,
+    ) -> None:
         self._entrypoint_template = entrypoint
 
     def render(
@@ -55,12 +52,11 @@ class ImmutableRenderer:
         immutable_files: dict[str, str] | None = None,
         optimizer: PopulationEntry | None = None,
         solvers: Sequence[PopulationEntry],
-        prefill_solver: PopulationEntry,
+        prefill_solver: PopulationEntry | None,
         optimizer_examples: Sequence[PopulationEntry] | None = None,
     ) -> str:
-        """Render a copied immutable README using literal marker replacement."""
+        """Render copied immutable text using literal marker replacement."""
 
-        self.validate(template)
         return self._replace_markers(
             template,
             problem=problem,
@@ -70,7 +66,7 @@ class ImmutableRenderer:
             solvers=solvers,
             prefill_solver=prefill_solver,
             optimizer_examples=optimizer_examples,
-        ).strip()
+        )
 
     def entrypoint(
         self,
@@ -79,7 +75,7 @@ class ImmutableRenderer:
         config: DictConfig,
         optimizer: PopulationEntry | None = None,
         solvers: Sequence[PopulationEntry],
-        prefill_solver: PopulationEntry,
+        prefill_solver: PopulationEntry | None,
         optimizer_examples: Sequence[PopulationEntry] | None = None,
     ) -> str:
         """Return the agent entrypoint instruction, with markers replaced."""
@@ -101,20 +97,6 @@ class ImmutableRenderer:
             optimizer_examples=optimizer_examples,
         ).strip()
 
-    def validate(self, template: str) -> None:
-        """Raise if the README template is missing a required marker."""
-        missing = [marker for marker in self.README_MARKERS if marker not in template]
-        if not missing:
-            return
-        details = "\n".join(f"- {marker}: {self.README_MARKERS[marker]}" for marker in missing)
-        raise ValueError(
-            "immutable/README.md is missing required placeholder(s):\n"
-            f"{details}\n"
-            "EvE injects runtime data through these exact markers. Removing them prevents "
-            "the Phase 2 workspace instructions from receiving the data the algorithm "
-            "needs. Please keep the required placeholder strings in immutable/README.md."
-        )
-
     def _replace_markers(
         self,
         text: str,
@@ -124,7 +106,7 @@ class ImmutableRenderer:
         immutable_files: dict[str, str] | None,
         optimizer: PopulationEntry | None,
         solvers: Sequence[PopulationEntry],
-        prefill_solver: PopulationEntry,
+        prefill_solver: PopulationEntry | None,
         optimizer_examples: Sequence[PopulationEntry] | None,
     ) -> str:
         optimizer_examples = tuple(optimizer_examples or ())
@@ -198,14 +180,19 @@ class ImmutableRenderer:
     def _render_solver_examples_block(
         *,
         solvers: Sequence[PopulationEntry],
-        prefill_solver: PopulationEntry,
+        prefill_solver: PopulationEntry | None,
         solver_examples_dir: str,
     ) -> str:
         blocks = []
         for entry in solvers:
-            marker = " <- prefill (copied to solver/)" if entry.id == prefill_solver.id else ""
+            marker = (
+                " <- prefill"
+                if prefill_solver is not None and entry.id == prefill_solver.id
+                else ""
+            )
             blocks.append(f"- `{solver_examples_dir}/{entry.id}/`{marker}")
-            blocks.extend(score_block_lines(entry.score, indent=2))
+            blocks.append("  prior score:")
+            blocks.extend(score_block_lines(entry.score, indent=4))
         blocks.append("")
         return "\n".join(blocks) + "\n"
 
@@ -226,3 +213,30 @@ class ImmutableRenderer:
             blocks.extend(score_block_lines(entry.score, indent=2))
         blocks.append("")
         return "\n".join(blocks)
+
+
+def render_immutable_files(
+    *,
+    renderer: ImmutableRenderer,
+    immutable_files: dict[str, str],
+    problem: RepoTaskProblem,
+    config: DictConfig,
+    optimizer: PopulationEntry | None = None,
+    solvers: Sequence[PopulationEntry],
+    prefill_solver: PopulationEntry | None,
+    optimizer_examples: Sequence[PopulationEntry] | None = None,
+) -> dict[str, str]:
+    """Render every immutable file with the same runtime marker context."""
+    return {
+        rel_path: renderer.render(
+            content,
+            problem=problem,
+            config=config,
+            immutable_files=immutable_files,
+            optimizer=optimizer,
+            solvers=solvers,
+            prefill_solver=prefill_solver,
+            optimizer_examples=optimizer_examples,
+        )
+        for rel_path, content in immutable_files.items()
+    }

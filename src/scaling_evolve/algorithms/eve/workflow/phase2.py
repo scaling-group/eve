@@ -181,7 +181,7 @@ class Phase2Runner:
                     worker_config=self.worker_config,
                 ),
                 working_directory=str(self.workspace),
-                prompt_file="README.md",
+                prompt_file="README.md" if (self.workspace / "README.md").is_file() else None,
                 write_prompt_file=False,
                 display_context=self._display_context(),
             )
@@ -268,6 +268,8 @@ class Phase2Runner:
             boundary_result=boundary_result,
             candidate_files=candidate_files,
             optimize_logs=optimize_logs,
+            solver_examples=sampled_solvers,
+            prefill_solver=prefill_solver,
             display_context=self._display_context(worker_index=worker_index),
         )
         solver_logs = self.solver_workspace_builder.write_run_logs(
@@ -423,6 +425,7 @@ class Phase2BatchRunner:
         n_workers_phase2: int,
         n_solver_examples_phase2: int,
         n_optimizer_examples_phase2: int,
+        exclude_all_working_optimizers_from_examples: bool,
         n_produced_optimizers_phase2: int,
         optimizer_sampler: object,
         solver_sampler: object,
@@ -441,6 +444,9 @@ class Phase2BatchRunner:
         self.n_workers_phase2 = n_workers_phase2
         self.n_solver_examples_phase2 = n_solver_examples_phase2
         self.n_optimizer_examples_phase2 = n_optimizer_examples_phase2
+        self.exclude_all_working_optimizers_from_examples = (
+            exclude_all_working_optimizers_from_examples
+        )
         self.n_produced_optimizers_phase2 = n_produced_optimizers_phase2
         self.optimizer_sampler = optimizer_sampler
         self.solver_sampler = solver_sampler
@@ -574,10 +580,12 @@ class Phase2BatchRunner:
     ) -> list[PopulationEntry]:
         if self.n_optimizer_examples_phase2 <= 1:
             return []
-        selected_ids = {entry.id for entry in selected_optimizers}
-        optimizer_entries = [
-            entry for entry in self.optimizer_pop.entries() if entry.id not in selected_ids
-        ]
+        optimizer_entries = self.optimizer_pop.entries()
+        if self.exclude_all_working_optimizers_from_examples:
+            selected_ids = {entry.id for entry in selected_optimizers}
+            optimizer_entries = [
+                entry for entry in optimizer_entries if entry.id not in selected_ids
+            ]
         return list(
             self.optimizer_examples_sampler.sample(
                 optimizer_entries,

@@ -79,6 +79,9 @@ class Eve:
                 n_workers_phase2=self.config.n_workers_phase2,
                 n_solver_examples_phase2=self.config.n_solver_examples_phase2,
                 n_optimizer_examples_phase2=self.config.n_optimizer_examples_phase2,
+                exclude_all_working_optimizers_from_examples=(
+                    self.config.exclude_all_working_optimizers_from_examples
+                ),
                 n_produced_optimizers_phase2=self.config.produce_optimizer_in_phase2,
                 optimizer_sampler=self.phase2_optimizer_sampler,
                 solver_sampler=self.phase2_solver_sampler,

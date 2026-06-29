@@ -19,6 +19,7 @@ from scaling_evolve.algorithms.eve.populations.evaluators.elo import (
     VectorEloEvaluator,
 )
 from scaling_evolve.algorithms.eve.populations.samplers.rank_softmax import (
+    EvalRankSoftmaxSampler,
     RankExponentialSumSampler,
     RankSoftmaxSampler,
 )
@@ -105,33 +106,34 @@ def _make_test_config(workspace_root: Path | str = "run", **overrides) -> DictCo
         "n_workers_phase2": 2,
         "n_solver_examples_phase2": 4,
         "n_optimizer_examples_phase2": 4,
+        "exclude_all_working_optimizers_from_examples": False,
         "boundary_repair_attempts": 3,
         "enable_resume": True,
         "retain_workspaces": True,
         "produce_optimizer_in_phase2": 0,
         "sampling": {
-            "phase1_optimizer_population": {
+            "working_optimizer": {
                 "_target_": f"{_RS}.RankSoftmaxSampler",
                 "temperature": 1.0,
                 "replacement_mode": "auto",
             },
-            "phase1_solver_population": {
+            "solver_examples": {
                 "_target_": f"{_RS}.RankExponentialSumSampler",
                 "features": {
                     "score": {"weight": 1.0, "temperature": 1.0},
                 },
                 "replacement_mode": "no_replacement",
             },
-            "solver_workspace_prefill": {
+            "solver_prefill": {
                 "_target_": f"{_US}.UniformSampler",
                 "replacement_mode": "no_replacement",
             },
-            "phase2_optimizer_examples": {
+            "optimizer_examples": {
                 "_target_": f"{_RS}.RankSoftmaxSampler",
                 "temperature": 1.0,
                 "replacement_mode": "no_replacement",
             },
-            "phase2_produced_optimizers": {
+            "produced_optimizers": {
                 "_target_": f"{_RS}.RankExponentialSumSampler",
                 "features": {
                     "score": {"weight": 1.0, "temperature": 1.0},
@@ -171,10 +173,12 @@ class _FakeDriver:
     def __init__(self) -> None:
         self.resume_calls = 0
         self.spawn_instructions: list[str] = []
+        self.spawn_prompt_files: list[str | None] = []
         self.optimizer_guidance_update: dict[str, str] = {}
 
     def spawn(self, seed: object) -> object:
         self.spawn_instructions.append(seed.instruction)
+        self.spawn_prompt_files.append(seed.prompt_file)
         workspace = Path(seed.working_directory)
         for rel_path, content in self.optimizer_guidance_update.items():
             path = workspace / "guidance" / rel_path
@@ -624,6 +628,56 @@ def test_solver_workspace_materializes_selected_worker_assets(tmp_path: Path) ->
         "name": "exploratory",
         "weight": 1.0,
     }
+
+
+def test_phase2_worker_without_readme_uses_inline_instruction_only(tmp_path: Path) -> None:
+    problem = _make_problem(tmp_path)
+    driver = _FakeDriver()
+    config = _instantiate_test_instructions(_make_test_config(workspace_root=tmp_path / "run"))
+    worker = SolverWorkerConfig(
+        name="no_readme",
+        weight=1.0,
+        immutable_files={"AGENTS.md": "agent instructions\n"},
+        immutable_renderer=DefaultRenderer(entrypoint="Inline phase2 instruction."),
+        boundary_repair_prompt="Repair only allowed files.",
+        rollout_prompts={"budget": _default_budget_prompt()},
+    )
+    solver_workspace_builder = SolverWorkspaceBuilder(
+        tmp_path / "solver_workspaces",
+        problem=problem,
+        config=config,
+        immutable_files={},
+        worker_configs=[worker],
+    )
+    optimizer = PopulationEntry(id="opt-1", files={"APPROACH.md": "approach"}, score={}, logs={})
+    candidate = PopulationEntry(
+        id="solver_1",
+        files={"candidate.py": "print('seed')\n"},
+        score=_score(0.4),
+        logs={"evaluate/summary.txt": "seed summary"},
+    )
+
+    Phase2Runner(
+        solver_workspace_builder=solver_workspace_builder,
+        driver=driver,
+        solver_evaluator=_make_solver_evaluator(
+            problem,
+            eval_fn=lambda files, display_context=None, **kwargs: (
+                _score(1.0),
+                {"summary.txt": "evaluation summary"},
+            ),
+        ),
+        step_label="step_3",
+        iteration=3,
+    ).run_single(
+        optimizer=optimizer,
+        solvers=[candidate],
+        prefill_solver=candidate,
+        worker_index=1,
+    )
+
+    assert driver.spawn_instructions == ["Inline phase2 instruction."]
+    assert driver.spawn_prompt_files == [None]
 
 
 def test_normal_worker_matches_default_materialized_assets(tmp_path: Path) -> None:
@@ -1178,6 +1232,7 @@ def test_phase2_batch_adds_configured_optimizer_candidate(tmp_path: Path) -> Non
         n_workers_phase2=1,
         n_solver_examples_phase2=1,
         n_optimizer_examples_phase2=0,
+        exclude_all_working_optimizers_from_examples=False,
         n_produced_optimizers_phase2=1,
         optimizer_sampler=_HeadSampler(),
         solver_sampler=_HeadSampler(),
@@ -1360,6 +1415,7 @@ def test_phase2_batch_reuses_same_optimizer_examples_for_all_workers(
         n_workers_phase2=2,
         n_solver_examples_phase2=1,
         n_optimizer_examples_phase2=2,
+        exclude_all_working_optimizers_from_examples=True,
         n_produced_optimizers_phase2=0,
         optimizer_sampler=_HeadSampler(),
         solver_sampler=_HeadSampler(),
@@ -1370,6 +1426,129 @@ def test_phase2_batch_reuses_same_optimizer_examples_for_all_workers(
 
     assert optimizer_examples_sampler.calls == [["opt_3", "opt_4"]]
     assert optimizer_examples_seen == [["opt_1", "opt_3"], ["opt_2", "opt_3"]]
+
+
+def test_phase2_batch_can_sample_optimizer_examples_from_working_optimizers(
+    tmp_path: Path, monkeypatch
+) -> None:
+    class _Population:
+        def __init__(self, entries: list[PopulationEntry]) -> None:
+            self._entries = list(entries)
+            self._rng = random.Random(0)
+
+        def entries(self) -> list[PopulationEntry]:
+            return list(self._entries)
+
+        def add(self, entry: PopulationEntry) -> None:
+            self._entries.append(entry)
+
+        def update_logs(self, logs_by_id: dict[str, dict[str, str]]) -> None:
+            _ = logs_by_id
+
+    class _HeadSampler:
+        def sample(self, entries, scores, n, rng):  # noqa: ANN001, ARG002
+            _ = scores
+            _ = rng
+            return list(entries[:n])
+
+    class _RecordingOptimizerExampleSampler:
+        def __init__(self) -> None:
+            self.calls: list[list[str]] = []
+
+        def sample(self, entries, scores, n, rng):  # noqa: ANN001, ARG002
+            _ = scores
+            _ = rng
+            entry_ids = [entry.id for entry in entries]
+            self.calls.append(entry_ids)
+            return list(entries[:n])
+
+    problem = _make_problem(tmp_path)
+    config = _instantiate_test_instructions(
+        _make_test_config(
+            workspace_root=tmp_path / "run",
+            n_workers_phase2=2,
+            n_solver_examples_phase2=1,
+            n_optimizer_examples_phase2=2,
+        )
+    )
+    solver_workspace_builder = SolverWorkspaceBuilder(
+        tmp_path / "solver_workspaces",
+        problem=problem,
+        config=config,
+        **_solver_workspace_builder_kwargs(config),
+    )
+    solver_pop = _Population(
+        [
+            PopulationEntry(
+                id="solver_1",
+                files={"candidate.py": "print('seed')\n"},
+                score=_score(0.4),
+                logs={"evaluate/summary.txt": "seed summary"},
+            )
+        ]
+    )
+    optimizer_pop = _Population(
+        [
+            PopulationEntry(
+                id="opt_1",
+                files={"APPROACH.md": "opt1"},
+                score=_optimizer_score(1500.0),
+                logs={},
+            ),
+            PopulationEntry(
+                id="opt_2",
+                files={"APPROACH.md": "opt2"},
+                score=_optimizer_score(1490.0),
+                logs={},
+            ),
+            PopulationEntry(
+                id="opt_3",
+                files={"APPROACH.md": "opt3"},
+                score=_optimizer_score(1480.0),
+                logs={},
+            ),
+        ]
+    )
+    optimizer_examples_seen: list[list[str]] = []
+
+    def _fake_run_single(
+        self, *, optimizer, solvers, optimizer_examples, prefill_solver, worker_index
+    ):
+        _ = (self, solvers, prefill_solver, worker_index)
+        optimizer_examples_seen.append([entry.id for entry in optimizer_examples])
+        return Phase2Result(optimizer=optimizer)
+
+    optimizer_examples_sampler = _RecordingOptimizerExampleSampler()
+    monkeypatch.setattr(Phase2Runner, "run_single", _fake_run_single)
+
+    Phase2BatchRunner(
+        solver_workspace_builder=solver_workspace_builder,
+        driver=_FakeDriver(),
+        solver_evaluator=_make_solver_evaluator(
+            problem,
+            eval_fn=lambda files, display_context=None, **kwargs: (
+                _score(1.0),
+                {"summary.txt": "evaluation summary"},
+            ),
+        ),
+        step_label="step_3",
+        iteration=3,
+        solver_pop=solver_pop,
+        optimizer_pop=optimizer_pop,
+        n_workers_phase2=2,
+        n_solver_examples_phase2=1,
+        n_optimizer_examples_phase2=2,
+        exclude_all_working_optimizers_from_examples=False,
+        n_produced_optimizers_phase2=0,
+        optimizer_sampler=_HeadSampler(),
+        solver_sampler=_HeadSampler(),
+        prefill_sampler=_HeadSampler(),
+        optimizer_examples_sampler=optimizer_examples_sampler,
+        produced_optimizer_sampler=_HeadSampler(),
+    ).run()
+
+    assert optimizer_examples_sampler.calls == [["opt_1", "opt_2", "opt_3"]]
+    assert optimizer_examples_seen == [["opt_1", "opt_1"], ["opt_2", "opt_1"]]
 
 
 def test_phase2_batch_samples_produced_optimizers_when_configured(
@@ -1493,6 +1672,7 @@ def test_phase2_batch_samples_produced_optimizers_when_configured(
         n_workers_phase2=2,
         n_solver_examples_phase2=1,
         n_optimizer_examples_phase2=0,
+        exclude_all_working_optimizers_from_examples=False,
         n_produced_optimizers_phase2=1,
         optimizer_sampler=_HeadSampler(),
         solver_sampler=_HeadSampler(),
@@ -1772,7 +1952,7 @@ def test_readme_renders_current_score_shape(tmp_path: Path) -> None:
     )
 
     assert "score:" in instruction
-    assert "Their score cards are shown below:" in instruction
+    assert "prior score:" in instruction
     assert "quality: 8.0" in instruction
     assert "speed: 10.0" in instruction
 
@@ -1917,6 +2097,35 @@ def test_rank_softmax_accepts_optimizer_elo_scores() -> None:
     )
 
     assert selected == ["b"]
+
+
+def test_eval_rank_softmax_ranks_by_expression() -> None:
+    items = ["coverage_peak", "balanced", "weak"]
+    scores = [
+        {"dimensions": {"coverage": 90.0, "correctness": 80.0, "dependency": 40.0}},
+        {"dimensions": {"coverage": 70.0, "correctness": 72.0, "dependency": 68.0}},
+        {"dimensions": {"coverage": 30.0, "correctness": 90.0, "dependency": 90.0}},
+    ]
+
+    class _TopWeightRandom:
+        def choices(self, population, weights, k):  # noqa: ANN001, ARG002
+            best_index = max(range(len(weights)), key=weights.__getitem__)
+            return [population[best_index]]
+
+    selected = EvalRankSoftmaxSampler(
+        expression=(
+            'min(dimensions["coverage"], dimensions["correctness"], dimensions["dependency"])'
+        ),
+        temperature=1.0,
+        replacement_mode="no_replacement",
+    ).sample(
+        items,
+        scores,
+        1,
+        rng=_TopWeightRandom(),  # type: ignore[arg-type]
+    )
+
+    assert selected == ["balanced"]
 
 
 def test_uniform_sampler_auto_fills_after_unique_pass() -> None:
@@ -2191,31 +2400,6 @@ def test_readme_literal_replace_allows_bare_braces(tmp_path: Path) -> None:
     assert "`solver_examples/task-1/` <- prefill" in instruction
 
 
-def test_readme_marker_contract_fails_loud(tmp_path: Path) -> None:
-    candidate = PopulationEntry(
-        id="task-1",
-        files={"candidate.py": "print('seed')\n"},
-        score=_score(0.5),
-        logs={},
-    )
-    immutable_files = _minimal_immutable_files()
-    immutable_files["README.md"] = immutable_files["README.md"].replace(
-        "{solver_examples_block}",
-        "",
-    )
-    config = _instantiate_test_instructions(
-        _make_test_config(workspace_root=tmp_path / "run", immutable_files=immutable_files)
-    )
-
-    with pytest.raises(ValueError, match=r"\{solver_examples_block\}"):
-        _render_phase2_readme_for_test(
-            config,
-            problem=_make_problem(tmp_path),
-            solvers=[candidate],
-            prefill_solver_id="task-1",
-        )
-
-
 def test_boundary_check_allows_editable_folder_changes(tmp_path: Path) -> None:
     baseline = tmp_path / "baseline"
     candidate = tmp_path / "candidate"
@@ -2457,18 +2641,26 @@ def _judge_step(
     *,
     immutable_files: dict[str, str],
     entrypoint: str = "Judge entrypoint",
+    immutable_renderer=None,
     rollout_prompts: dict[str, object] | None = None,
 ) -> EvaluationStep:
     return EvaluationStep(
         name=name,
         immutable_files=immutable_files,
-        immutable_renderer=StaticRenderer(),
+        immutable_renderer=immutable_renderer or StaticRenderer(),
         entrypoint=entrypoint,
         rollout_prompts=rollout_prompts,
     )
 
 
-def _judge_evaluator(problem, plan, driver, *, evaluation_failure_score=None):
+def _judge_evaluator(
+    problem,
+    plan,
+    driver,
+    *,
+    evaluation_failure_score=None,
+    include_solver_examples: bool = False,
+):
     return build_solver_evaluator(
         problem,
         evaluation_plan=plan,
@@ -2477,6 +2669,7 @@ def _judge_evaluator(problem, plan, driver, *, evaluation_failure_score=None):
         boundary_failure_score={"score": 0.0, "summary": "boundary check failed"},
         seed_solver_score=None,
         seed_solver_skip_evaluation=False,
+        include_solver_examples=include_solver_examples,
         evaluation_driver_factory=lambda: driver,
     )
 
@@ -2650,6 +2843,99 @@ def test_eval_workspace_is_reconstructed_from_snapshot_and_candidate(tmp_path: P
     assert (eval_ws / "logs" / "evaluate").stat().st_mode & 0o222 != 0
     # No guidance/ in the eval workspace (design §4).
     assert not (eval_ws / "guidance").exists()
+    # Solver examples are not materialized unless evaluation.include_solver_examples is enabled.
+    assert not (eval_ws / "solver_examples").exists()
+
+
+def test_eval_workspace_includes_solver_examples_and_renders_readme_block(
+    tmp_path: Path,
+) -> None:
+    problem = _make_problem(tmp_path)
+    workspace = tmp_path / "run" / "solver_workspaces" / "candidate-a"
+    workspace.mkdir(parents=True)
+    example = PopulationEntry(
+        id="solver_example_1",
+        files={"proof/proof.md": "example proof\n"},
+        score={"dimensions": {"coverage": 77.0}},
+        logs={
+            "evaluate/score.yaml": "dimensions:\n  coverage: 77.0\n",
+            "optimize/transcript.txt": "not copied\n",
+        },
+    )
+    captured: dict[str, Path] = {}
+
+    class _JudgeDriver:
+        def spawn(self, seed: object) -> object:
+            eval_ws = Path(seed.working_directory)
+            assert seed.prompt_file == "README.md"
+            captured["eval_ws"] = eval_ws
+            readme = (eval_ws / "README.md").read_text(encoding="utf-8")
+            assert "{solver_examples_block}" not in readme
+            assert "- `solver_examples/solver_example_1/` <- prefill" in readme
+            assert "  prior score:\n    dimensions:" in readme
+            assert "coverage: 77.0" in readme
+            assert (
+                eval_ws / "solver_examples" / "solver_example_1" / "solver" / "proof" / "proof.md"
+            ).read_text(encoding="utf-8") == "example proof\n"
+            assert (
+                eval_ws
+                / "solver_examples"
+                / "solver_example_1"
+                / "logs"
+                / "evaluate"
+                / "score.yaml"
+            ).exists()
+            assert not (
+                eval_ws
+                / "solver_examples"
+                / "solver_example_1"
+                / "logs"
+                / "optimize"
+                / "transcript.txt"
+            ).exists()
+            (eval_ws / "logs" / "evaluate" / "score.yaml").write_text(
+                "score: 0.6\n", encoding="utf-8"
+            )
+            return SimpleNamespace(summary="judge transcript")
+
+    plan = EvaluationPlan(
+        steps=(
+            _judge_step(
+                "judge",
+                immutable_files={
+                    "README.md": "Reference examples:\n\n{solver_examples_block}\n",
+                    "AGENTS.md": "Agent examples:\n\n{solver_examples_block}\n",
+                    "CLAUDE.md": "Judge agent instructions without runtime markers.\n",
+                },
+                immutable_renderer=DefaultRenderer(),
+            ),
+        ),
+    )
+    evaluator = _judge_evaluator(
+        problem,
+        plan,
+        _JudgeDriver(),
+        include_solver_examples=True,
+    )
+
+    score, _logs = evaluator(
+        workspace,
+        candidate_files={"candidate.py": "print('candidate')\n"},
+        optimize_logs={"transcript.txt": "solver transcript\n"},
+        solver_examples=[example],
+        prefill_solver=example,
+    )
+
+    assert score == {"score": 0.6}
+    eval_ws = captured["eval_ws"]
+    agents_text = (eval_ws / "AGENTS.md").read_text(encoding="utf-8")
+    assert "{solver_examples_block}" not in agents_text
+    assert "- `solver_examples/solver_example_1/` <- prefill" in agents_text
+    assert "  prior score:\n    dimensions:" in agents_text
+    assert (eval_ws / "CLAUDE.md").read_text(
+        encoding="utf-8"
+    ) == "Judge agent instructions without runtime markers.\n"
+    assert (eval_ws / "solver_examples").stat().st_mode & 0o222 == 0
 
 
 def test_null_immutable_judge_runs_clean_without_inheriting_prior_scaffold(
@@ -2669,14 +2955,15 @@ def test_null_immutable_judge_runs_clean_without_inheriting_prior_scaffold(
     class _ScaffoldProbeDriver:
         def spawn(self, seed: object) -> object:
             eval_ws = Path(seed.working_directory)
-            tag = (
-                "j1"
-                if "judge1" in (eval_ws / "ENTRYPOINT.md").read_text(encoding="utf-8")
-                else "j2"
-            )
+            tag = "j1" if "judge1" in seed.instruction else "j2"
+            if tag == "j1":
+                assert seed.prompt_file == "README.md"
+            else:
+                assert seed.prompt_file is None
             scaffold_seen[tag] = {
                 "README.md": (eval_ws / "README.md").exists(),
                 "AGENTS.md": (eval_ws / "AGENTS.md").exists(),
+                "ENTRYPOINT.md": (eval_ws / "ENTRYPOINT.md").exists(),
             }
             existing = yaml.safe_load(
                 (eval_ws / "logs" / "evaluate" / "score.yaml").read_text(encoding="utf-8")
@@ -2695,7 +2982,7 @@ def test_null_immutable_judge_runs_clean_without_inheriting_prior_scaffold(
                 immutable_files={"README.md": "judge1 rubric\n", "AGENTS.md": "judge1 agents\n"},
                 entrypoint="judge1 entrypoint",
             ),
-            # null-immutable judge: no scaffold landed, runs from its ENTRYPOINT alone.
+            # null-immutable judge: no scaffold landed, runs from the inline instruction only.
             _judge_step("bare", immutable_files={}, entrypoint="judge2 entrypoint"),
         ),
     )
@@ -2712,9 +2999,9 @@ def test_null_immutable_judge_runs_clean_without_inheriting_prior_scaffold(
     )
 
     # The scaffolded judge saw its own immutable landed.
-    assert scaffold_seen["j1"] == {"README.md": True, "AGENTS.md": True}
+    assert scaffold_seen["j1"] == {"README.md": True, "AGENTS.md": True, "ENTRYPOINT.md": False}
     # The null-immutable judge saw a CLEAN workspace — the prior scaffold was swapped out.
-    assert scaffold_seen["j2"] == {"README.md": False, "AGENTS.md": False}
+    assert scaffold_seen["j2"] == {"README.md": False, "AGENTS.md": False, "ENTRYPOINT.md": False}
     # The accumulated score survived the clean swap.
     assert score == {
         "performance": 0.5,

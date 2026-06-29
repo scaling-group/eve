@@ -18,6 +18,25 @@ Read the `solver/problem/` directory, proof files under `solver/proof/`, and opt
 cited lemmas, reductions, definitions, notation imported from references, and
 nontrivial claims delegated to external or earlier results.
 
+Use reference solver examples only as dependency-score calibration context.
+When present, inspect `solver_examples/<solver_id>/score.yaml` and prior
+dependency reports under
+`solver_examples/<solver_id>/logs/evaluate/evaluation/dependency-auditor/` to
+understand how examples such as identifiable dependencies, missing hypothesis
+checks, misstated facts, and unauditable references were scored. If an example
+is marked as prefill, it was the starting copy for the current `solver/`, but
+the current candidate should now differ. Use it alongside the other reference examples to calibrate your score and report;
+never treat its dependency status or score as applying to the current proof
+without checking the current statements and uses.
+
+Reference solver examples (if available):
+
+{solver_examples_block}
+
+If the current candidate improves on or regresses from a reference example on
+dependency quality, reflect that difference in your suggested score; do not
+reuse a prior score when the dependency evidence has changed.
+
 Use available retrieval or web tools as best-effort aids for named or
 specialized dependencies. Treat retrieval output as supporting evidence, not as
 a hard dependency. A failed or empty search does not prove a dependency is

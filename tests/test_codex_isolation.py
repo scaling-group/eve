@@ -55,6 +55,22 @@ def test_create_isolated_codex_home_escapes_project_path(tmp_path: Path) -> None
     assert '\\"quoted\\"' in config_text
 
 
+def test_create_isolated_codex_home_writes_launch_model_defaults(tmp_path: Path) -> None:
+    isolated = create_isolated_codex_home(
+        home_root=tmp_path / "home",
+        source_auth_path=None,
+        launch=CodexLaunchConfig(
+            worktree_root=tmp_path / "repo",
+            model="gpt-test",
+            model_reasoning_effort="high",
+        ),
+    )
+
+    config_text = isolated.config_path.read_text(encoding="utf-8")
+    assert 'model = "gpt-test"' in config_text
+    assert 'model_reasoning_effort = "high"' in config_text
+
+
 def test_create_isolated_codex_home_copies_trusted_hook_state(
     monkeypatch,
     tmp_path: Path,

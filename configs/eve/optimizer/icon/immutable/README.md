@@ -131,7 +131,9 @@ Guidance-side edits are part of the intended work in this mode. If your changes 
 
 ## Reference Examples
 
-Reference solver examples are in `solver_examples/`. Their score cards are shown below:
+Reference solver examples are in `solver_examples/`. Their score cards are shown below.
+If marked `prefill`, that example was used to initialize `solver/` before your
+current edits.
 
 {solver_examples_block}
 

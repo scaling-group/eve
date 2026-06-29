@@ -23,9 +23,13 @@ from scaling_evolve.algorithms.eve.problem.repo import RepoTaskProblem
 from scaling_evolve.algorithms.eve.prompt_assets import read_required_prompt_text
 from scaling_evolve.algorithms.eve.rollout_prompts.default import BudgetPrompt, PromptContext
 from scaling_evolve.algorithms.eve.workflow.optimize_logs import build_usage_report
-from scaling_evolve.algorithms.eve.workspace.file_tree import read_file_tree, write_file_tree
+from scaling_evolve.algorithms.eve.workspace.file_tree import (
+    read_file_tree,
+    write_file_tree,
+)
 from scaling_evolve.algorithms.eve.workspace.immutable_renderers.base import (
     ImmutableRenderer,
+    render_immutable_files,
 )
 from scaling_evolve.algorithms.eve.workspace.immutable_renderers.static import (
     StaticRenderer,
@@ -90,6 +94,7 @@ class SolverEvaluator:
     boundary_failure_score: PyTree
     seed_solver_score: PyTree | None
     seed_solver_skip_evaluation: bool
+    include_solver_examples: bool = False
 
     def __call__(
         self,
@@ -97,12 +102,16 @@ class SolverEvaluator:
         *,
         candidate_files: dict[str, str] | None = None,
         optimize_logs: dict[str, str] | None = None,
+        solver_examples: list[PopulationEntry] | None = None,
+        prefill_solver: PopulationEntry | None = None,
         display_context: dict[str, str | int] | None = None,
     ) -> tuple[PyTree, dict[str, str]]:
         return self.evaluate(
             workspace_root,
             candidate_files=candidate_files,
             optimize_logs=optimize_logs,
+            solver_examples=solver_examples,
+            prefill_solver=prefill_solver,
             display_context=display_context,
         )
 
@@ -112,6 +121,8 @@ class SolverEvaluator:
         *,
         candidate_files: dict[str, str] | None = None,
         optimize_logs: dict[str, str] | None = None,
+        solver_examples: list[PopulationEntry] | None = None,
+        prefill_solver: PopulationEntry | None = None,
         display_context: dict[str, str | int] | None = None,
     ) -> tuple[PyTree, dict[str, str]]:
         eval_ws = _judge_workspace_for_solver_workspace(workspace_root)
@@ -122,12 +133,17 @@ class SolverEvaluator:
                 candidate_files = read_file_tree(workspace_root / "solver")
             if optimize_logs is None:
                 optimize_logs = read_file_tree(workspace_root / "logs" / "optimize")
+            solver_examples = list(solver_examples or [])
             score = _run_evaluation_steps(
                 plan=self.evaluation_plan,
                 workspace_root=workspace_root,
                 candidate_files=candidate_files,
                 optimize_logs=optimize_logs,
                 snapshot_root=self.problem.snapshot_root,
+                problem=self.problem,
+                solver_examples=solver_examples,
+                prefill_solver=prefill_solver,
+                include_solver_examples=self.include_solver_examples,
                 driver_factory=self.evaluation_driver_factory,
                 display_context=dict(display_context or {}),
             )
@@ -154,6 +170,8 @@ class SolverEvaluator:
         boundary_result: object,
         candidate_files: dict[str, str] | None = None,
         optimize_logs: dict[str, str] | None = None,
+        solver_examples: list[PopulationEntry] | None = None,
+        prefill_solver: PopulationEntry | None = None,
         display_context: dict[str, str | int] | None = None,
     ) -> tuple[PyTree, dict[str, str]]:
         if not boundary_result.ok:
@@ -165,6 +183,8 @@ class SolverEvaluator:
             workspace_root,
             candidate_files=candidate_files,
             optimize_logs=optimize_logs,
+            solver_examples=solver_examples,
+            prefill_solver=prefill_solver,
             display_context=display_context,
         )
 
@@ -347,6 +367,9 @@ def _run_judge_step(
     step_index: int,
     eval_ws: Path,
     previously_landed: set[str],
+    problem: RepoTaskProblem,
+    solver_examples: list[PopulationEntry],
+    prefill_solver: PopulationEntry | None,
     driver_factory,
     display_context: dict[str, str | int],
 ) -> set[str]:
@@ -356,7 +379,14 @@ def _run_judge_step(
         workspace_root=eval_ws,
     )
     step_log_dir.mkdir(parents=True, exist_ok=True)
-    landed = _land_judge_assets(step=step, eval_ws=eval_ws, previously_landed=previously_landed)
+    landed = _land_judge_assets(
+        step=step,
+        eval_ws=eval_ws,
+        previously_landed=previously_landed,
+        problem=problem,
+        solver_examples=solver_examples,
+        prefill_solver=prefill_solver,
+    )
     score_path = eval_ws / _EVAL_SCORE_YAML_PATH
     score_before_text = score_path.read_text(encoding="utf-8") if score_path.exists() else None
     _LOGGER.info(
@@ -373,7 +403,7 @@ def _run_judge_step(
         seed=SessionSeed(
             instruction=_require_judge_entrypoint(step),
             working_directory=str(eval_ws),
-            prompt_file="ENTRYPOINT.md",
+            prompt_file="README.md" if (eval_ws / "README.md").is_file() else None,
             write_prompt_file=False,
             display_context=display_context,
         ),
@@ -401,16 +431,21 @@ def _run_judge_step(
 
 
 def _land_judge_assets(
-    *, step: EvaluationStep, eval_ws: Path, previously_landed: set[str]
+    *,
+    step: EvaluationStep,
+    eval_ws: Path,
+    previously_landed: set[str],
+    problem: RepoTaskProblem,
+    solver_examples: list[PopulationEntry],
+    prefill_solver: PopulationEntry | None,
 ) -> set[str]:
-    """Clean-swap THIS judge's immutable assets + ENTRYPOINT into the (built) eval workspace.
+    """Clean-swap THIS judge's immutable assets into the (built) eval workspace.
 
     Each judge step REPLACES the prior judge's scaffold: the previously-landed files are
-    removed first, then this step's immutable (which may be empty — `immutable` is optional)
-    plus its ENTRYPOINT are written. A clean swap (not an overlay) means a judge with a
-    smaller-or-null immutable does NOT inherit stale files from an earlier judge. The episode
-    (`solver/`, `logs/optimize/`) and accumulated `logs/evaluate/` are never touched, so the
-    accumulated score persists across judge steps.
+    removed first, then this step's immutable is written. A clean swap (not an overlay) means
+    one judge does NOT inherit stale files from an earlier judge. The episode (`solver/`,
+    `logs/optimize/`) and accumulated `logs/evaluate/` are never touched, so the accumulated
+    score persists across judge steps.
 
     Returns the set of relative paths this step landed (removed before the next judge step).
     """
@@ -421,15 +456,19 @@ def _land_judge_assets(
 
     renderer = step.immutable_renderer or StaticRenderer()
     immutable_files = dict(step.immutable_files or {})
-    write_file_tree(
-        eval_ws,
-        {rel_path: renderer.render(content, step) for rel_path, content in immutable_files.items()},
+    eval_renderer_config = OmegaConf.create({"n_optimizer_examples_phase2": 0})
+    rendered_files = render_immutable_files(
+        renderer=renderer,
+        immutable_files=immutable_files,
+        problem=problem,
+        config=eval_renderer_config,
+        optimizer=None,
+        solvers=solver_examples,
+        prefill_solver=prefill_solver,
+        optimizer_examples=(),
     )
-    (eval_ws / "ENTRYPOINT.md").write_text(
-        _require_judge_entrypoint(step).rstrip() + "\n",
-        encoding="utf-8",
-    )
-    return set(immutable_files) | {"ENTRYPOINT.md"}
+    write_file_tree(eval_ws, rendered_files)
+    return set(rendered_files)
 
 
 def _build_judge_prompt_specs(
@@ -537,6 +576,10 @@ def _run_evaluation_steps(
     candidate_files: dict[str, str] | None,
     optimize_logs: dict[str, str] | None,
     snapshot_root: Path,
+    problem: RepoTaskProblem,
+    solver_examples: list[PopulationEntry],
+    prefill_solver: PopulationEntry | None,
+    include_solver_examples: bool,
     driver_factory,
     display_context: dict[str, str | int],
 ) -> PyTree:
@@ -548,6 +591,8 @@ def _run_evaluation_steps(
         candidate_files=candidate_files or {},
         optimize_logs=optimize_logs or {},
         snapshot_root=snapshot_root,
+        solver_examples=solver_examples,
+        include_solver_examples=include_solver_examples,
     )
     landed_assets: set[str] = set()
     for step_index, step in enumerate(plan.steps, start=1):
@@ -557,6 +602,9 @@ def _run_evaluation_steps(
                 step_index=step_index,
                 eval_ws=eval_ws,
                 previously_landed=landed_assets,
+                problem=problem,
+                solver_examples=solver_examples,
+                prefill_solver=prefill_solver,
                 driver_factory=driver_factory,
                 display_context=display_context,
             )
@@ -578,6 +626,8 @@ def _build_eval_workspace(
     candidate_files: dict[str, str],
     optimize_logs: dict[str, str],
     snapshot_root: Path,
+    solver_examples: list[PopulationEntry] | None = None,
+    include_solver_examples: bool = False,
 ) -> Path:
     """Build the eval workspace ONCE from the canonical episode representation.
 
@@ -596,11 +646,36 @@ def _build_eval_workspace(
     optimize_root = eval_ws / "logs" / "optimize"
     write_file_tree(optimize_root, optimize_logs)
 
+    if include_solver_examples:
+        examples_root = eval_ws / "solver_examples"
+        _write_solver_examples(examples_root, solver_examples or [])
+
     _make_tree_read_only(solver_root)
     _make_tree_read_only(optimize_root)
+    if include_solver_examples:
+        _make_tree_read_only(eval_ws / "solver_examples")
 
     (eval_ws / _EVAL_LOG_ROOT).mkdir(parents=True, exist_ok=True)
     return eval_ws
+
+
+def _write_solver_examples(examples_root: Path, solver_examples: list[PopulationEntry]) -> None:
+    examples_root.mkdir(exist_ok=True)
+    for entry in solver_examples:
+        example_dir = examples_root / entry.id
+        example_dir.mkdir(exist_ok=True)
+        write_file_tree(example_dir / "solver", entry.files)
+        write_file_tree(
+            example_dir / "logs",
+            {path: content for path, content in entry.logs.items() if path.startswith("evaluate/")},
+        )
+        _write_score_yaml(
+            example_dir / "score.yaml",
+            {
+                "example_id": entry.id,
+                "score": entry.score,
+            },
+        )
 
 
 def _judge_workspace_for_solver_workspace(workspace_root: Path) -> Path:
@@ -655,6 +730,7 @@ def build_solver_evaluator(
     boundary_failure_score: PyTree,
     seed_solver_score: PyTree | None,
     seed_solver_skip_evaluation: bool,
+    include_solver_examples: bool = False,
     evaluation_driver_factory,
 ) -> SolverEvaluator:
     return SolverEvaluator(
@@ -665,6 +741,7 @@ def build_solver_evaluator(
         boundary_failure_score=boundary_failure_score,
         seed_solver_score=seed_solver_score,
         seed_solver_skip_evaluation=seed_solver_skip_evaluation,
+        include_solver_examples=include_solver_examples,
     )
 
 
@@ -790,8 +867,6 @@ def _judge_step(
     if not entrypoint_path.is_file():
         raise SystemExit(f"evaluation judge `{name_value}` prompt ENTRYPOINT.md not found.")
 
-    # `immutable` is OPTIONAL: null/omitted means no scaffold is landed for this judge,
-    # which then runs from its ENTRYPOINT alone.
     immutable_files: dict[str, str] = {}
     if immutable_value is not None:
         immutable_root = _resolve_required_dir(

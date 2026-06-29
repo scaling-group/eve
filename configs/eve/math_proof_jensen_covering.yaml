@@ -24,7 +24,8 @@ loop:
   n_optimizer_examples_phase2: 4
   produce_optimizer_in_phase2: 2
   sampling:
-    phase1_solver_population:
+    solver_examples:
+      _target_: scaling_evolve.algorithms.eve.populations.samplers.rank_softmax.RankExponentialSumSampler
       features:
         dimensions:
           coverage:

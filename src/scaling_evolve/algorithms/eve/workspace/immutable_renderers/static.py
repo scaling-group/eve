@@ -15,6 +15,6 @@ class StaticRenderer(ImmutableRenderer):
     no markers, so they use this renderer to land unchanged.
     """
 
-    def render(self, template: str, ctx: object | None = None) -> str:
-        _ = ctx
+    def render(self, template: str, *args: object, **kwargs: object) -> str:
+        _ = args, kwargs
         return template

@@ -290,11 +290,11 @@ class EveFactory:
         optimizer_artifact_store = FSArtifactStore(artifact_root, run_id=optimizer_run_id)
 
         sampling_keys = (
-            "phase1_optimizer_population",
-            "phase1_solver_population",
-            "solver_workspace_prefill",
-            "phase2_optimizer_examples",
-            "phase2_produced_optimizers",
+            "working_optimizer",
+            "solver_examples",
+            "solver_prefill",
+            "optimizer_examples",
+            "produced_optimizers",
         )
         samplers = {
             key: instantiate(dict(loop_cfg.sampling[key]), _convert_="all") for key in sampling_keys
@@ -338,11 +338,11 @@ class EveFactory:
             solver_evaluator=solver_evaluator,
             config=loop_cfg,
             optimizer_evaluator=optimizer_evaluator,
-            phase2_optimizer_sampler=samplers["phase1_optimizer_population"],
-            phase2_solver_sampler=samplers["phase1_solver_population"],
-            phase2_prefill_sampler=samplers["solver_workspace_prefill"],
-            phase2_optimizer_examples_sampler=samplers["phase2_optimizer_examples"],
-            phase2_produced_optimizer_sampler=samplers["phase2_produced_optimizers"],
+            phase2_optimizer_sampler=samplers["working_optimizer"],
+            phase2_solver_sampler=samplers["solver_examples"],
+            phase2_prefill_sampler=samplers["solver_prefill"],
+            phase2_optimizer_examples_sampler=samplers["optimizer_examples"],
+            phase2_produced_optimizer_sampler=samplers["produced_optimizers"],
             logger=logger,
         )
 
