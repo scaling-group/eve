@@ -100,7 +100,12 @@ def test_codex_tmux_launch_config_uses_workspace_hooks(
         lambda: repo_hooks_path,
     )
     worktree = tmp_path / "workspace"
-    driver = CodexTmuxSessionDriver(pane_id="%9", run_root=tmp_path / "run-root")
+    driver = CodexTmuxSessionDriver(
+        pane_id="%9",
+        run_root=tmp_path / "run-root",
+        model="gpt-test",
+        reasoning_effort="high",
+    )
 
     launch = driver._launch_config(worktree)  # noqa: SLF001
 
@@ -109,6 +114,8 @@ def test_codex_tmux_launch_config_uses_workspace_hooks(
     assert launch.hook_trust_source_path == repo_hooks_path
     assert launch.trusted_project_roots == ()
     assert launch.project_root_markers == ()
+    assert launch.model == "gpt-test"
+    assert launch.model_reasoning_effort == "high"
     assert (worktree / ".codex" / "hooks.json").exists()
 
 

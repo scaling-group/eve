@@ -94,11 +94,14 @@ immutable overlay files:
 
 {immutable_overlay_block}
 
-Use existing guidance skills and subagents when they help. 
-When you learn something reusable, update the most appropriate part of `guidance/`: ordinary
-notes/docs for general strategy, `guidance/skills/` for reusable workflows or
-skills, and `guidance/agents/` for specialist roles. These skills and agents
-will be exposed through the provider symlinks. Feel free to add new files.
+Use existing guidance skills and subagents when they help. The `guidance/`
+folder is reused in future iterations, so put reusable updates in the most
+appropriate part of `guidance/`: ordinary
+notes/docs for general guidance, `guidance/skills/` for reusable workflows or
+skills, and `guidance/agents/` for specialist subagents. These skills and subagents
+will be exposed through the aforementioned symlinks.
+
+Make reflections. Feel free to add new files, delete outdated contents, and add new contents in `guidance/`.
 
 Do not limit guidance updates to task facts. Some reusable guidance should be
 self-prompts: any instructions that change how the agent works, including
@@ -141,7 +144,9 @@ to identify rewarded proof moves, penalized gaps, and reusable repair strategies
 Also read the sampled optimizer examples, especially their `guidance/` files, to
 identify reusable strategies and guidance improvements.
 
-You have a few reference example(s). Their score cards are shown below:
+You have a few reference example(s). Their score cards are shown below.
+If marked `prefill`, that example was used to initialize `solver/` before your
+current edits.
 
 {solver_examples_block}
 {optimizer_examples_block}

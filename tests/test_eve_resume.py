@@ -83,6 +83,7 @@ def _loop_config(run_root: Path, *, max_iterations: int, enable_resume: bool = T
             "n_workers_phase2": 1,
             "n_solver_examples_phase2": 1,
             "n_optimizer_examples_phase2": 1,
+            "exclude_all_working_optimizers_from_examples": False,
             "boundary_repair_attempts": 0,
             "enable_resume": enable_resume,
             "produce_optimizer_in_phase2": 0,
@@ -240,27 +241,28 @@ def _factory_reload_config(
                 "n_workers_phase2": 1,
                 "n_solver_examples_phase2": 1,
                 "n_optimizer_examples_phase2": 1,
+                "exclude_all_working_optimizers_from_examples": False,
                 "produce_optimizer_in_phase2": 0,
                 "boundary_repair_attempts": 0,
                 "enable_resume": True,
                 "sampling": {
-                    "phase1_optimizer_population": {
+                    "working_optimizer": {
                         "_target_": sampler_target,
                         "replacement_mode": "no_replacement",
                     },
-                    "phase1_solver_population": {
+                    "solver_examples": {
                         "_target_": sampler_target,
                         "replacement_mode": "no_replacement",
                     },
-                    "solver_workspace_prefill": {
+                    "solver_prefill": {
                         "_target_": sampler_target,
                         "replacement_mode": "no_replacement",
                     },
-                    "phase2_optimizer_examples": {
+                    "optimizer_examples": {
                         "_target_": sampler_target,
                         "replacement_mode": "no_replacement",
                     },
-                    "phase2_produced_optimizers": {
+                    "produced_optimizers": {
                         "_target_": sampler_target,
                         "replacement_mode": "no_replacement",
                     },

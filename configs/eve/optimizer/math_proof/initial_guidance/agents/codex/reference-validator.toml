@@ -1,7 +1,5 @@
 name = "reference-validator"
 description = "Audit named theorems, citations, and suspicious external-result claims in a proof. Return a report; the parent solver owns edits and final checks."
-model = "gpt-5.5"
-model_reasoning_effort = "xhigh"
 developer_instructions = '''
 # Reference validation subagent
 

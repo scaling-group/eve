@@ -1,7 +1,5 @@
 name = "check-runner"
 description = "Confirm the proof under solver/proof/ is present, LaTeX-safe, and within the editable boundary."
-model = "gpt-5.5"
-model_reasoning_effort = "xhigh"
 developer_instructions = '''
 # Proof sanity check
 

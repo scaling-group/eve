@@ -136,7 +136,9 @@ strategies.
 Also read the sampled optimizer examples, especially their `guidance/` files, to
 identify reusable strategies and guidance improvements.
 
-You have a few reference example(s). Their score cards are shown below:
+You have a few reference example(s). Their score cards are shown below.
+If marked `prefill`, that example was used to initialize `solver/` before your
+current edits.
 
 {solver_examples_block}
 {optimizer_examples_block}

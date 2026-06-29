@@ -21,6 +21,25 @@ theorems, classifications, normal forms, invariants, reductions, or structural
 arguments that would substantially simplify the proof, reduce fragile case
 analysis, or lower the chance of hidden errors.
 
+Use reference solver examples only as strategy-score calibration context. When
+present, inspect `solver_examples/<solver_id>/score.yaml` and prior strategy
+reports under
+`solver_examples/<solver_id>/logs/evaluate/evaluation/strategy-auditor/` to
+understand how examples such as proof-route choices, missed structural
+theorems, brittle case analysis, and improvement targets were scored. If an
+example is marked as prefill, it was the starting copy for the current
+`solver/`, but the current candidate should now differ. Use it alongside the other reference examples to calibrate your score and
+report; never import its route judgment or score without comparing
+the current proof route to the current target theorem.
+
+Reference solver examples (if available):
+
+{solver_examples_block}
+
+If the current candidate improves on or regresses from a reference example on
+strategy, reflect that difference in your suggested score; do not reuse a prior
+score when the strategy evidence has changed.
+
 Do not lower strategy merely because a local step is wrong; that belongs under
 correctness. Do not lower strategy merely because a cited dependency is vague
 or inapplicable; that belongs under dependency. Lower strategy when the proof

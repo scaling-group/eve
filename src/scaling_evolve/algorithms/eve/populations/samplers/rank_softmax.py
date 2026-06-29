@@ -5,14 +5,14 @@ config mapping, for example:
 
 ```yaml
 sampling:
-  phase1_solver_population:
+  solver_examples:
     _target_:
       scaling_evolve.algorithms.eve.populations.samplers.rank_softmax.RankExponentialSumSampler
     features:
       score:
         weight: 1.0
         temperature: 1.0
-  phase2_optimizer_examples:
+  optimizer_examples:
     _target_:
       scaling_evolve.algorithms.eve.populations.samplers.rank_softmax.RankSoftmaxSampler
     temperature: 1.0
@@ -37,6 +37,11 @@ Supported samplers in this file:
 
    These summed weights are used directly for weighted sampling without
    replacement.
+
+3. ``EvalRankSoftmaxSampler``
+
+   Evaluate a configured Python expression against each score, rank the scalar
+   results best-first, then sample with rank-softmax weights.
 
 With a single configured feature, ``RankExponentialSumSampler`` is equivalent
 to ``RankSoftmaxSampler`` when the same temperature is used.
@@ -66,6 +71,7 @@ class RankExponentialSumSampler(WeightedSamplerBase[_T]):
         features: PyTree,
         *,
         replacement_mode: ReplacementMode,
+        **_ignored_kwargs: object,
     ) -> None:
         super().__init__(replacement_mode=replacement_mode)
         self.features = features
@@ -139,6 +145,7 @@ class RankSoftmaxSampler(RankExponentialSumSampler):
         temperature: float = 1.0,
         *,
         replacement_mode: ReplacementMode,
+        **_ignored_kwargs: object,
     ) -> None:
         if temperature <= 0:
             raise ValueError("rank_softmax temperature must be > 0")
@@ -170,3 +177,53 @@ class RankSoftmaxSampler(RankExponentialSumSampler):
             total_weights[item_index] = math.exp(-(rank / self.temperature))
 
         return self._sample_by_mode(items, total_weights, num=num, rng=rng)
+
+
+class EvalRankSoftmaxSampler(WeightedSamplerBase[_T]):
+    def __init__(
+        self,
+        expression: str,
+        temperature: float = 1.0,
+        *,
+        replacement_mode: ReplacementMode,
+        **_ignored_kwargs: object,
+    ) -> None:
+        if temperature <= 0:
+            raise ValueError("eval_rank_softmax temperature must be > 0")
+        super().__init__(replacement_mode=replacement_mode)
+        self.expression = expression
+        self.temperature = temperature
+
+    def sample(
+        self,
+        items: list[_T],
+        scores: list[PyTree],
+        num: int,
+        rng: random.Random | None = None,
+    ) -> list[_T]:
+        rng = rng or random.Random()
+        if num <= 0 or not items:
+            return []
+
+        expression_scores = [self._eval_score(score) for score in scores]
+        ranked_indices = sorted(
+            range(len(items)),
+            key=lambda index: expression_scores[index],
+            reverse=True,
+        )
+        total_weights = [0.0 for _ in items]
+        for rank, item_index in enumerate(ranked_indices):
+            total_weights[item_index] = math.exp(-(rank / self.temperature))
+
+        return self._sample_by_mode(items, total_weights, num=num, rng=rng)
+
+    def _eval_score(self, score: PyTree) -> float:
+        dimensions = score.get("dimensions") if isinstance(score, dict) else None
+        value = eval(  # noqa: S307
+            self.expression,
+            {"math": math},
+            {"score": score, "dimensions": dimensions},
+        )
+        if not isinstance(value, (int, float)) or isinstance(value, bool):
+            raise TypeError("eval_rank_softmax expression must return a numeric value")
+        return float(value)

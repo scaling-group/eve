@@ -1,7 +1,5 @@
 name = "coverage-auditor"
 description = "Audit whether solver/proof/ covers the required components of the target theorem in solver/problem/. Return evidence and a suggested coverage score only."
-model = "gpt-5.5"
-model_reasoning_effort = "xhigh"
 developer_instructions = '''
 # Coverage auditor
 
@@ -17,6 +15,24 @@ Read the `solver/problem/` directory, proof files under `solver/proof/`, and opt
 compare it against the written candidate proof from the target outward:
 hypotheses, quantifiers, reductions, cases, edge conditions, existence or
 uniqueness clauses, and final conclusion.
+
+Use reference solver examples only as coverage-score calibration context.
+When present, inspect `solver_examples/<solver_id>/score.yaml` and prior
+coverage reports under
+`solver_examples/<solver_id>/logs/evaluate/evaluation/coverage-auditor/` to
+understand how examples such as missing, weakened, or covered theorem
+obligations were scored.
+
+Reference solver examples (if available):
+
+{solver_examples_block}
+
+If an example is marked as prefill, it was the starting copy for the current
+`solver/`, but the current candidate should now differ. Use it alongside the other reference examples to calibrate your score and
+report; never copy its coverage judgment or score without rechecking
+the current target and proof. If the current candidate improves on or regresses
+from a reference example on coverage, reflect that difference in your suggested
+score; do not reuse a prior score when the coverage evidence has changed.
 
 Do not lower coverage merely because a covered argument is mathematically
 wrong; that belongs under correctness. Lower coverage when a necessary part of

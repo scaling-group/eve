@@ -20,6 +20,7 @@ class UniformSampler(WeightedSamplerBase[_T]):
         self,
         *,
         replacement_mode: ReplacementMode,
+        **_ignored_kwargs: object,
     ) -> None:
         super().__init__(replacement_mode=replacement_mode)
 

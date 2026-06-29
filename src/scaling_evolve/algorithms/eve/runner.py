@@ -219,6 +219,13 @@ def run(cfg: DictConfig) -> None:
                 default=False,
             )
         )
+        include_solver_examples = bool(
+            OmegaConf.select(
+                run_config,
+                "evaluation.include_solver_examples",
+                default=False,
+            )
+        )
         solver_evaluator = build_solver_evaluator(
             problem,
             evaluation_plan=evaluation_plan,
@@ -226,6 +233,7 @@ def run(cfg: DictConfig) -> None:
             boundary_failure_score=boundary_failure_score,
             seed_solver_score=seed_solver_score,
             seed_solver_skip_evaluation=seed_solver_skip_evaluation,
+            include_solver_examples=include_solver_examples,
             evaluation_driver_factory=drivers.eval_driver_factory,
         )
 

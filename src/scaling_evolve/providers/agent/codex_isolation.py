@@ -20,6 +20,8 @@ class CodexLaunchConfig:
     hook_trust_source_path: Path | None = None
     trusted_project_roots: tuple[Path, ...] = ()
     project_root_markers: tuple[str, ...] | None = ()
+    model: str | None = None
+    model_reasoning_effort: str | None = None
 
 
 @dataclass(frozen=True)
@@ -195,6 +197,12 @@ def _render_config_toml(launch: CodexLaunchConfig) -> str:
     lines: list[str] = []
     if launch.project_root_markers is not None:
         lines.append(f"project_root_markers = {json.dumps(list(launch.project_root_markers))}")
+        lines.append("")
+    if launch.model is not None:
+        lines.append(f"model = {json.dumps(launch.model)}")
+    if launch.model_reasoning_effort is not None:
+        lines.append(f"model_reasoning_effort = {json.dumps(launch.model_reasoning_effort)}")
+    if launch.model is not None or launch.model_reasoning_effort is not None:
         lines.append("")
     lines.extend(["[features]", "hooks = true", ""])
     for project_root in trusted_projects:

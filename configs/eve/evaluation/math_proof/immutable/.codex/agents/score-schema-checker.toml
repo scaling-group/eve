@@ -1,7 +1,5 @@
 name = "score-schema-checker"
 description = "Audit logs/evaluate/score.yaml and evaluation artifacts. Report issues only; do not judge proof quality or edit files."
-model = "gpt-5.5"
-model_reasoning_effort = "xhigh"
 developer_instructions = '''
 # Score schema checker
 

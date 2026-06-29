@@ -18,6 +18,24 @@ organization, notation, naming, signposting, ordering of definitions, whether
 the proof route is visible, and whether local goals are clear before they are
 used.
 
+Use reference solver examples only as clarity-score calibration context. When
+present, inspect `solver_examples/<solver_id>/score.yaml` and prior clarity
+reports under
+`solver_examples/<solver_id>/logs/evaluate/evaluation/clarity-auditor/` to
+understand how examples such as organization problems, notation drift,
+signposting gaps, and auditability issues were scored. If an example is marked
+as prefill, it was the starting copy for the current `solver/`, but the current
+candidate should now differ. Use it alongside the other reference examples to calibrate your score and report; never reuse
+its readability judgment or score without reading the current proof.
+
+Reference solver examples (if available):
+
+{solver_examples_block}
+
+If the current candidate improves on or regresses from a reference example on
+clarity, reflect that difference in your suggested score; do not reuse a prior
+score when the clarity evidence has changed.
+
 Do not lower clarity merely because the proof is mathematically wrong; that
 belongs under correctness. Lower clarity when the writing obscures what is being
 claimed, why a step is relevant, what objects mean, or how the pieces are

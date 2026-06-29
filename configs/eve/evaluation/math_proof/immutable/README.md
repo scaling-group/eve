@@ -16,6 +16,12 @@ Workspace layout:
 |-- logs/
 |   |-- optimize/         # Phase 2 solver-agent logs copied in as context.
 |   `-- evaluate/         # Write evaluation/, score.yaml, checker reports here.
+|-- solver_examples/      # Sampled reference solvers from the population.
+|   `-- <solver_id>/
+|       |-- solver/       # Files from that solver example.
+|       |-- logs/         # Logs for that solver example.
+|       |   `-- evaluate/ # Evaluation logs for that solver example.
+|       `-- score.yaml    # Evaluation score for that solver example.
 |-- .codex/agents/        # Codex evaluation helper agents.
 |-- .claude/agents/       # Claude evaluation helper agents.
 `-- ...
@@ -23,8 +29,10 @@ Workspace layout:
 
 # Your Task
 
-Read `solver/problem/` and proof files under `solver/proof/`. Score the
-candidate as a rigorous proof of the target theorem.
+Read `solver/problem/` and proof files under `solver/proof/` only to coordinate
+the scoring auditor subagents and write self-contained subagent tasks. Do not
+rescore, reinterpret, or override the proof quality. Aggregate the scores given
+by the auditors into the final `logs/evaluate/score.yaml`.
 
 ## Evaluation Artifacts
 
@@ -39,11 +47,11 @@ logs/evaluate/evaluation/strategy-auditor/     # Strategy review.
 logs/evaluate/score.yaml                       # Final score card.
 ```
 
-The parent evaluator writes `logs/evaluate/score.yaml`. Scoring auditor
-subagents write their formal review files under
+Write `logs/evaluate/score.yaml` by aggregating auditor
+suggested scores. Scoring auditor subagents write their formal review files under
 `logs/evaluate/evaluation/<auditor-name>/`.
 
-Do not create a separate parent-authored critique. The formal review tree is
+Do not create a separate evaluator-authored critique. The formal review tree is
 the set of auditor-written dimension directories under `logs/evaluate/evaluation/`.
 
 ## Scoring Auditors
@@ -73,11 +81,13 @@ not use full-history fork mode such as Codex `spawn_agent` with `fork_context`.
 Fresh subagents do not inherit your conversation context, so give each one a
 self-contained task message.
 
-## Scoring Contract
+## Aggregation Contract
 
-Score the candidate proof as a rigorous math proof for the theorem in
-`solver/problem/`. Use reference material there only as optional context; the
-candidate must stand on the proof written under `solver/proof/`.
+Do not rescore the proof or invent dimension values in this evaluator. Build
+the final score card by aggregating the scoring auditors'
+suggested dimension scores into `logs/evaluate/score.yaml`. Use reference
+material in `solver/problem/` only as optional context; the candidate must stand
+on the proof written under `solver/proof/`.
 
 The score file must use the math-proof dimensions-only score schema:
 

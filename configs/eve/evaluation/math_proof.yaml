@@ -7,7 +7,8 @@ evaluation:
     - immutable: configs/eve/evaluation/math_proof/immutable
       prompt: configs/eve/evaluation/math_proof/prompt
   immutable_renderer:
-    _target_: scaling_evolve.algorithms.eve.workspace.immutable_renderers.static.StaticRenderer
+    _target_: scaling_evolve.algorithms.eve.workspace.immutable_renderers.default.DefaultRenderer
+  include_solver_examples: true
   failure_score:
     dimensions:
       coverage: 0.0

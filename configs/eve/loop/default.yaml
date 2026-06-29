@@ -6,41 +6,43 @@ loop:
   n_workers_phase2: 2
   n_solver_examples_phase2: 4
   n_optimizer_examples_phase2: 4  # See `_build_worker_optimizer_examples`.
+  exclude_all_working_optimizers_from_examples: false
   produce_optimizer_in_phase2: ${loop.n_workers_phase2}
   boundary_repair_attempts: 3
   enable_resume: true  # write checkpoints and lineage snapshots for same-run resume
   sampling:
-    # Phase 2 worker optimizers. Sample from the full optimizer population,
-    # ranked by each optimizer entry's own score (typically Elo).
-    phase1_optimizer_population:
+    # From: full optimizer population. Sample: `n_workers_phase2`. To: one
+    # optimizer assigned to each Phase 2 worker.
+    working_optimizer:
       _target_: scaling_evolve.algorithms.eve.populations.samplers.rank_softmax.RankSoftmaxSampler
       temperature: 1.0
       replacement_mode: auto
-    # Phase 2 solver reference examples. Sample from the full solver population,
-    # ranked by each solver entry's score.score.
-    phase1_solver_population:
+    # From: full solver population. Sample: `n_solver_examples_phase2`. To:
+    # `solver_examples/` in each Phase 2 worker workspace.
+    solver_examples:
       _target_: scaling_evolve.algorithms.eve.populations.samplers.rank_softmax.RankExponentialSumSampler
       features:
         score:
           weight: 1.0
           temperature: 1.0
       replacement_mode: no_replacement
-    # Phase 2 prefill solver. Sample one solver from the sampled Phase 2 solver
-    # examples uniformly; no score ranking is used.
-    solver_workspace_prefill:
+    # From: sampled solver examples. Sample: 1. To: initial `solver/` contents
+    # in each Phase 2 worker workspace.
+    solver_prefill:
       _target_: scaling_evolve.algorithms.eve.populations.samplers.uniform.UniformSampler
       replacement_mode: no_replacement
-    # Phase 2 shared optimizer examples. Sample from the optimizer population
-    # excluding the worker-selected optimizers for this iteration, ranked by each
-    # optimizer entry's own score (typically Elo).
-    phase2_optimizer_examples:
+    # From: optimizer population, optionally excluding this iteration's
+    # assigned worker optimizers. Sample: `n_optimizer_examples_phase2 - 1`
+    # shared reference optimizers. To: `guidance_examples/` in each Phase 2
+    # worker workspace. The workspace's working optimizer is also added to
+    # `guidance_examples/` whenever `n_optimizer_examples_phase2 > 0`.
+    optimizer_examples:
       _target_: scaling_evolve.algorithms.eve.populations.samplers.rank_softmax.RankSoftmaxSampler
       temperature: 1.0
       replacement_mode: no_replacement
-    # Phase 2 produced optimizers kept this iteration. Sample from the set of
-    # newly produced optimizer candidates in this iteration, ranked by the
-    # corresponding produced solver's score.score.
-    phase2_produced_optimizers:
+    # From: optimizer candidates produced in this Phase 2 iteration. Sample:
+    # `produce_optimizer_in_phase2`. To: optimizer population.
+    produced_optimizers:
       _target_: scaling_evolve.algorithms.eve.populations.samplers.rank_softmax.RankExponentialSumSampler
       features:
         score:

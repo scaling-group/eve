@@ -24,6 +24,9 @@ from scaling_evolve.algorithms.eve.workspace.file_tree import (
     write_claude_stop_hook_settings,
     write_file_tree,
 )
+from scaling_evolve.algorithms.eve.workspace.immutable_renderers.base import (
+    render_immutable_files,
+)
 from scaling_evolve.algorithms.eve.workspace.immutable_renderers.default import (
     DefaultRenderer,
 )
@@ -81,8 +84,6 @@ class SolverWorkspaceBuilder:
         for worker_config in self.worker_configs:
             self._validate_worker_config(
                 worker_config,
-                allow_empty_immutable=not explicit_worker_configs
-                and not worker_config.immutable_files,
                 require_boundary_repair=explicit_worker_configs,
             )
         self.rollout_prompts = self.worker_configs[0].rollout_prompts
@@ -92,22 +93,12 @@ class SolverWorkspaceBuilder:
         self,
         worker_config: SolverWorkerConfig,
         *,
-        allow_empty_immutable: bool = False,
         require_boundary_repair: bool = False,
     ) -> None:
         if worker_config.weight <= 0:
             raise ValueError(f"worker `{worker_config.name}` weight must be positive.")
-        readme_template = worker_config.immutable_files.get("README.md")
-        if readme_template is None and allow_empty_immutable:
-            return
-        if readme_template is None:
-            raise ValueError(
-                f"worker `{worker_config.name}` immutable workspace assets must include "
-                "README.md so EvE can inject Phase 2 runtime instructions."
-            )
         if require_boundary_repair and not worker_config.boundary_repair_prompt:
             raise ValueError(f"worker `{worker_config.name}` requires prompt/BOUNDARY_REPAIR.md.")
-        worker_config.immutable_renderer.validate(readme_template)
 
     def select_worker_config(self, *, worker_index: int | None = None) -> SolverWorkerConfig:
         """Return a worker config using weighted random selection."""
@@ -214,25 +205,21 @@ class SolverWorkspaceBuilder:
     ) -> None:
         """Copy immutable assets into a Phase 2 workspace and render README."""
         worker_config = worker_config or self.worker_configs[0]
-        write_file_tree(workspace, self._render_runtime_immutable_files(worker_config))
-        self._write_worker_metadata(workspace, worker_config)
-        readme_path = workspace / "README.md"
-        if not readme_path.is_file():
-            raise ValueError(
-                f"worker `{worker_config.name}` immutable workspace assets must include "
-                "README.md so EvE can inject Phase 2 runtime instructions."
-            )
-        rendered_readme = worker_config.immutable_renderer.render(
-            readme_path.read_text(encoding="utf-8"),
-            problem=self.problem,
-            config=self.config,
-            immutable_files=worker_config.immutable_files,
-            optimizer=optimizer,
-            solvers=solvers,
-            prefill_solver=prefill_solver,
-            optimizer_examples=optimizer_examples,
+        immutable_files = self._render_runtime_immutable_files(worker_config)
+        write_file_tree(
+            workspace,
+            render_immutable_files(
+                renderer=worker_config.immutable_renderer,
+                immutable_files=immutable_files,
+                problem=self.problem,
+                config=self.config,
+                optimizer=optimizer,
+                solvers=solvers,
+                prefill_solver=prefill_solver,
+                optimizer_examples=optimizer_examples,
+            ),
         )
-        readme_path.write_text(rendered_readme.strip() + "\n", encoding="utf-8")
+        self._write_worker_metadata(workspace, worker_config)
 
     def _render_runtime_immutable_files(
         self,

@@ -617,6 +617,8 @@ class CodexTmuxSessionDriver(SessionDriver):
             worktree_root=worktree_root,
             hooks_json_path=hooks_json_path,
             hook_trust_source_path=repo_codex_hooks_path(),
+            model=self.model,
+            model_reasoning_effort=self.reasoning_effort,
         )
 
     def _transcript_snapshot_root(self, cwd: Path) -> Path:
