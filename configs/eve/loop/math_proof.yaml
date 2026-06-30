@@ -3,7 +3,7 @@
 
 loop:
   max_iterations: 25
-  n_workers_phase2: 3
+  n_workers_phase2: 2
   n_solver_examples_phase2: 4
   n_optimizer_examples_phase2: 4  # See `_build_worker_optimizer_examples`.
   exclude_all_working_optimizers_from_examples: false
