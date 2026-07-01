@@ -21,32 +21,14 @@ loop:
     # `solver_examples/` in each Phase 2 worker workspace.
     solver_examples:
       _target_: scaling_evolve.algorithms.eve.populations.samplers.rank_softmax.EvalRankSoftmaxSampler
-      expression: >-
-        min(
-          dimensions["coverage"],
-          dimensions["correctness"],
-          dimensions["coverage"] * 0.4 +
-          dimensions["correctness"] * 0.3 +
-          dimensions["dependency"] * 0.15 +
-          dimensions["strategy"] * 0.10 +
-          dimensions["clarity"] * 0.05
-        )
+      expression: ${evaluation.scalar_score_expression}
       temperature: 1.0
       replacement_mode: no_replacement
     # From: sampled solver examples. Sample: 1. To: initial `solver/` contents
     # in each Phase 2 worker workspace.
     solver_prefill:
       _target_: scaling_evolve.algorithms.eve.populations.samplers.rank_softmax.EvalRankSoftmaxSampler
-      expression: >-
-        min(
-          dimensions["coverage"],
-          dimensions["correctness"],
-          dimensions["coverage"] * 0.4 +
-          dimensions["correctness"] * 0.3 +
-          dimensions["dependency"] * 0.15 +
-          dimensions["strategy"] * 0.10 +
-          dimensions["clarity"] * 0.05
-        )
+      expression: ${evaluation.scalar_score_expression}
       temperature: 1.0
       replacement_mode: no_replacement
     # From: optimizer population, optionally excluding this iteration's

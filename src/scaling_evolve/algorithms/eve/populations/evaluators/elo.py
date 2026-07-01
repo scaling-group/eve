@@ -15,6 +15,11 @@ Supported evaluators:
    ``k_factors`` field is itself a PyTree whose structure matches the nested
    solver score. Every numeric leaf defines one feature path plus the Elo
    strength to apply at that path.
+
+3. ``EvalScalarEloEvaluator``
+
+   Evaluate a configured Python expression against each solver score, then use
+   the resulting scalar outcomes for one Elo update.
 """
 
 from __future__ import annotations
@@ -137,3 +142,31 @@ class ScalarEloEvaluator(VectorEloEvaluator):
             optimizer_id: {"score": scalar(score)} for optimizer_id, score in task_scores.items()
         }
         return super().update(current_elos, scalar_task_scores)
+
+
+class EvalScalarEloEvaluator(ScalarEloEvaluator):
+    def __init__(
+        self,
+        expression: str,
+        k_factor: float = 32.0,
+        initial_score: object | None = None,
+    ) -> None:
+        self.expression = expression
+        super().__init__(k_factor=k_factor, initial_score=initial_score)
+
+    def update(
+        self,
+        current_elos: dict[str, PyTree],
+        task_scores: dict[str, PyTree],
+    ) -> dict[str, PyTree]:
+        scalar_task_scores = {
+            optimizer_id: {"score": self._eval_score(score)}
+            for optimizer_id, score in task_scores.items()
+        }
+        return super().update(current_elos, scalar_task_scores)
+
+    def _eval_score(self, score: PyTree) -> float:
+        value = eval(self.expression)  # noqa: S307
+        if not isinstance(value, (int, float)) or isinstance(value, bool):
+            raise TypeError("eval_scalar_elo expression must return a numeric value")
+        return float(value)
