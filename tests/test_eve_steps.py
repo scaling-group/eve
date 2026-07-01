@@ -15,6 +15,7 @@ from omegaconf import DictConfig, OmegaConf
 from scaling_evolve.algorithms.eve.factory import _load_solver_worker_configs
 from scaling_evolve.algorithms.eve.populations.entry import PopulationEntry
 from scaling_evolve.algorithms.eve.populations.evaluators.elo import (
+    EvalScalarEloEvaluator,
     ScalarEloEvaluator,
     VectorEloEvaluator,
 )
@@ -2013,6 +2014,44 @@ def test_scalar_elo_uses_numeric_score_field() -> None:
     assert updated["optimizer_b"] == {"elo": 1484.0}
 
 
+def test_eval_scalar_elo_uses_score_expression() -> None:
+    current = {
+        "optimizer_a": {"elo": 1500.0},
+        "optimizer_b": {"elo": 1500.0},
+    }
+    task_scores = {
+        "optimizer_a": {
+            "dimensions": {
+                "coverage": 90.0,
+                "correctness": 80.0,
+                "dependency": 40.0,
+            }
+        },
+        "optimizer_b": {
+            "dimensions": {
+                "coverage": 70.0,
+                "correctness": 72.0,
+                "dependency": 68.0,
+            }
+        },
+    }
+
+    updated = EvalScalarEloEvaluator(
+        expression=(
+            'min(score["dimensions"]["coverage"], '
+            'score["dimensions"]["correctness"], '
+            'score["dimensions"]["dependency"])'
+        ),
+        k_factor=32.0,
+    ).update(
+        current,
+        task_scores,
+    )
+
+    assert updated["optimizer_a"] == {"elo": 1484.0}
+    assert updated["optimizer_b"] == {"elo": 1516.0}
+
+
 def test_vector_elo_uses_nested_k_factor_tree() -> None:
     current = {
         "optimizer_a": {"elo": 1500.0},
@@ -2114,7 +2153,9 @@ def test_eval_rank_softmax_ranks_by_expression() -> None:
 
     selected = EvalRankSoftmaxSampler(
         expression=(
-            'min(dimensions["coverage"], dimensions["correctness"], dimensions["dependency"])'
+            'min(score["dimensions"]["coverage"], '
+            'score["dimensions"]["correctness"], '
+            'score["dimensions"]["dependency"])'
         ),
         temperature=1.0,
         replacement_mode="no_replacement",
@@ -2126,6 +2167,20 @@ def test_eval_rank_softmax_ranks_by_expression() -> None:
     )
 
     assert selected == ["balanced"]
+
+
+def test_math_proof_score_expression_is_shared_by_solver_sampling_and_optimizer_elo() -> None:
+    config = OmegaConf.merge(
+        OmegaConf.load(_REPO_ROOT / "configs/eve/evaluation/math_proof.yaml"),
+        OmegaConf.load(_REPO_ROOT / "configs/eve/loop/math_proof.yaml"),
+        OmegaConf.load(_REPO_ROOT / "configs/eve/optimizer/math_proof.yaml"),
+    )
+
+    expression = config.evaluation.scalar_score_expression
+    assert config.loop.sampling.solver_examples.expression == expression
+    assert config.loop.sampling.solver_prefill.expression == expression
+    assert config.optimizer.evaluation.expression == expression
+    assert config.optimizer.evaluation._target_.endswith("EvalScalarEloEvaluator")
 
 
 def test_uniform_sampler_auto_fills_after_unique_pass() -> None:

@@ -218,12 +218,7 @@ class EvalRankSoftmaxSampler(WeightedSamplerBase[_T]):
         return self._sample_by_mode(items, total_weights, num=num, rng=rng)
 
     def _eval_score(self, score: PyTree) -> float:
-        dimensions = score.get("dimensions") if isinstance(score, dict) else None
-        value = eval(  # noqa: S307
-            self.expression,
-            {"math": math},
-            {"score": score, "dimensions": dimensions},
-        )
+        value = eval(self.expression)  # noqa: S307
         if not isinstance(value, (int, float)) or isinstance(value, bool):
             raise TypeError("eval_rank_softmax expression must return a numeric value")
         return float(value)

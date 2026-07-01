@@ -9,6 +9,16 @@ evaluation:
   immutable_renderer:
     _target_: scaling_evolve.algorithms.eve.workspace.immutable_renderers.default.DefaultRenderer
   include_solver_examples: true
+  scalar_score_expression: >-
+    min(
+      score["dimensions"]["coverage"],
+      score["dimensions"]["correctness"],
+      score["dimensions"]["coverage"] * 0.4 +
+      score["dimensions"]["correctness"] * 0.3 +
+      score["dimensions"]["dependency"] * 0.15 +
+      score["dimensions"]["strategy"] * 0.10 +
+      score["dimensions"]["clarity"] * 0.05
+    )
   failure_score:
     dimensions:
       coverage: 0.0

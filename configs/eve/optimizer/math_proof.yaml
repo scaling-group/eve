@@ -17,14 +17,9 @@ optimizer:
   immutable_renderer:
     _target_: scaling_evolve.algorithms.eve.workspace.immutable_renderers.default.DefaultRenderer
   evaluation:
-    _target_: scaling_evolve.algorithms.eve.populations.evaluators.elo.VectorEloEvaluator
-    k_factors:
-      dimensions:
-        coverage: 32.0
-        correctness: 32.0
-        dependency: 32.0
-        clarity: 32.0
-        strategy: 32.0
+    _target_: scaling_evolve.algorithms.eve.populations.evaluators.elo.EvalScalarEloEvaluator
+    expression: ${evaluation.scalar_score_expression}
+    k_factor: 32.0
     initial_score:
       elo: 1500.0
 
