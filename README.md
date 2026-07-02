@@ -144,16 +144,32 @@ preserving new strategies and their procedural evidence.
 
 ## Set Up Your Own Task
 
-To run EvE on your own codebase, you need a source repository, an application
-config, an evaluation config, initial guidance, and a top-level experiment
-config.
+To run EvE on your own task, you need an application config, an evaluation
+config, an optimizer config, and a top-level experiment config. Start with the
+default loop if you need to tune the search budget or sampling policy.
 
 ### 1. Application config
 
-Point EvE at your code repository and declare which files agents may edit:
+The application config names the task, points EvE at the snapshot, and declares
+which files agents may edit:
 
 ```yaml
 # configs/eve/application/your_task.yaml
+application:
+  name: your-task
+  path: examples/your_task/seed
+  editable:
+    files:
+      - src/model.py
+    folders: []
+  boundary_failure_score:
+    score: -1.0
+    summary: boundary check failed
+```
+
+For a Git-backed task, use `github_url` and `commit` instead of `path`:
+
+```yaml
 application:
   name: your-task
   github_url: https://github.com/your-org/your-repo
@@ -161,28 +177,19 @@ application:
   editable:
     files:
       - src/model.py
-      - configs/params.yaml
     folders: []
-  boundary_failure_score:
-    score: 0.0
-    summary: boundary check failed
 ```
 
-Agents are strictly confined to `editable.files` and `editable.folders`; any
-modification outside this surface is rejected by the boundary checker.
-For a local task tree instead of a Git checkout, set `application.path` and omit
-`github_url` and `commit`; EvE accepts either `path` or the pair
-`github_url`/`commit`, but not both.
+EvE accepts either `path` or the pair `github_url`/`commit`, but not both.
+Any edit outside `editable.files` and `editable.folders` is rejected by the
+boundary checker. Set `boundary_failure_score` to a hard-fail value in the same
+score schema as normal evaluation results; do not blindly copy the number above
+if your task uses a different score direction or range.
 
 ### 2. Evaluation config
 
 Provide one or more evaluation steps. A shell step runs inside the candidate
-workspace and must write a `score.yaml` file with at least `score: <float>` and
-`summary: <string>` to the evaluation log directory.
-Evaluation steps can also be judge-agent steps written as `{prompt,
-immutable?}` mappings; see
-[`implement-evaluation-steps`](docs/skills/implement-evaluation-steps/) for the
-full evaluation-step surface.
+workspace and writes the score file expected by your score schema:
 
 ```yaml
 # configs/eve/evaluation/your_task.yaml
@@ -190,25 +197,20 @@ evaluation:
   steps:
     - configs/eve/evaluation/your_task/evaluation.sh
   failure_score:
-    score: 0.0
+    score: -1.0
     summary: evaluation failed
   seed_solver_score: null
   seed_solver_skip_evaluation: false
 ```
 
-### 3. Initial guidance
+Evaluation steps may also use judge agents by providing `immutable` and
+`prompt` directories instead of a shell script. Use that path when the score
+needs subjective or structured agent judgment rather than a deterministic
+programmatic metric.
 
-Write Markdown documents and optional skills that describe the task and search
-directions for the agents. Place them in an `initial_guidance/` directory:
+### 3. Optimizer config
 
-```text
-configs/eve/optimizer/your_task/initial_guidance/
-  docs/                          # task context, search directions, background knowledge
-  skills/
-    your-skill/SKILL.md          # reusable instructions agents will read and evolve
-```
-
-Configure the initial guidance, immutable prompt assets, and worker prompts:
+The optimizer config seeds the guidance population and defines worker variants:
 
 ```yaml
 # configs/eve/optimizer/your_task.yaml
@@ -224,41 +226,21 @@ optimizer:
   immutable_renderer:
     _target_: scaling_evolve.algorithms.eve.workspace.immutable_renderers.default.DefaultRenderer
   evaluation:
-    _target_: scaling_evolve.algorithms.eve.populations.evaluators.elo.ScalarEloEvaluator
+    _target_: scaling_evolve.algorithms.eve.populations.evaluators.elo.VectorEloEvaluator
     k_factor: 32.0
     initial_score:
       elo: 1500.0
 ```
 
-Files under `initial_guidance/` seed the initial agent population. As agents
-discover what works and what does not, they revise the guidance for future
-iterations.
+`initial_guidance` seeds the optimizer population and can be revised by EvE over
+time. A worker's `immutable` directory is fixed scaffold copied into each worker
+workspace; it is not itself evolved. A worker's `prompt` directory contains
+prompt text used by the driver, such as entrypoint and boundary-repair prompts.
 
-### 4. Loop config
+### 4. Experiment config
 
-The default loop controls how many workers run per iteration and how many
-population examples each worker sees:
-
-```yaml
-# configs/eve/loop/default.yaml
-loop:
-  max_iterations: 25
-  n_workers_phase2: 2
-  n_solver_examples_phase2: 4
-  n_optimizer_examples_phase2: 4
-  produce_optimizer_in_phase2: ${loop.n_workers_phase2}
-```
-
-At each iteration, EvE launches `n_workers_phase2` solver workers in parallel.
-Each worker gets sampled solver references under `solver_examples/` and sampled
-guidance references under `guidance_examples/`. Workers race on the same
-iteration without communicating directly; the resulting solvers are evaluated,
-and produced guidance candidates are kept according to
-`produce_optimizer_in_phase2`.
-
-### 5. Experiment config
-
-Compose everything with Hydra and launch:
+Compose the run with Hydra. Use the default loop first; override loop settings
+only when you need to change the run budget or sampling behavior.
 
 ```yaml
 # configs/eve/your_task.yaml
@@ -273,14 +255,22 @@ defaults:
   - _self_
 
 label: your-task
+
+logger:
+  wandb:
+    enabled: false
 ```
+
+Launch it from the repository root:
 
 ```bash
 uv run python -m scaling_evolve.algorithms.eve.runner --config-name=your_task
 ```
 
-See `configs/eve/circle_packing.yaml`, `configs/eve/icon.yaml`, and
-`configs/eve/math_proof_quickstart.yaml` for complete working examples.
+See `configs/eve/math_proof_quickstart.yaml`,
+`configs/eve/math_proof_jensen_covering.yaml`,
+`configs/eve/circle_packing.yaml`, and `configs/eve/circle_packing.smoke.yaml`
+for complete working examples.
 
 ## Example: Model Positional Embedding Design
 
