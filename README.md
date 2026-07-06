@@ -49,10 +49,10 @@ EvE then searches for strong solutions without requiring a task-specific workflo
 ## Quick Start
 
 > [!IMPORTANT]
-> EvE orchestrates third-party coding agents; it does **not** provide unlimited
-> access to any AI service. Each agent session consumes subscription quota or
-> API credits on **your own account**. EvE does not bypass or modify any
-> provider's authentication, rate limits, or usage restrictions.
+> EvE orchestrates third-party coding agents; it does **not** provide AI service
+> access, share credentials, or bypass provider authentication, rate limits,
+> usage limits, or other restrictions. Each agent session uses credentials you
+> configure for that provider.
 
 ### First-time setup
 
@@ -62,8 +62,9 @@ EvE then searches for strong solutions without requiring a task-specific workflo
 
 2.  **Agent authentication.** The current public release uses
     [**Codex**](https://github.com/openai/codex) as the default agent backend.
-    Install and authenticate Codex with your own login, subscription, or API
-    credentials.
+    Install Codex and configure
+    [Codex authentication](https://developers.openai.com/codex/auth). We
+    recommend API-key authentication for EvE runs;
 
 3.  **Hook trust (for Codex >= 0.130.0).** EvE uses hooks for workspace
     sandboxing and budget prompts. Run once per machine from the repository root
