@@ -294,7 +294,7 @@ def capture_pane_tail(pane_id: str, *, tail_lines: int = 80) -> str:
 
 
 def pane_looks_ready(captured: str) -> bool:
-    """Return whether a Claude/Codex prompt is visible in the captured tail."""
+    """Return whether an agent prompt is visible in the captured tail."""
 
     content = captured.rstrip()
     if not content:

@@ -8,8 +8,6 @@ from scaling_evolve.algorithms.eve.runtime.driver import (
     build_role_drivers,
     load_pricing_table,
 )
-from scaling_evolve.providers.agent.drivers.claude_code import ClaudeCodeSessionDriver
-from scaling_evolve.providers.agent.drivers.claude_code_tmux import ClaudeCodeTmuxSessionDriver
 from scaling_evolve.providers.agent.drivers.codex_exec import CodexExecSessionDriver
 from scaling_evolve.providers.agent.drivers.codex_tmux import CodexTmuxSessionDriver
 
@@ -132,7 +130,7 @@ def test_build_role_drivers_injects_model_provider_env(monkeypatch, tmp_path: Pa
     drivers.close()
 
 
-def test_build_role_drivers_creates_shared_pool_for_tmux_eval_override(
+def test_build_role_drivers_creates_shared_pool_for_codex_tmux_eval_override(
     monkeypatch,
     tmp_path: Path,
 ) -> None:
@@ -166,13 +164,13 @@ def test_build_role_drivers_creates_shared_pool_for_tmux_eval_override(
 
     drivers = build_role_drivers(
         {
-            "provider": "codex_tmux",
+            "driver": "codex_exec",
             "model": "gpt-5.4-mini",
             "open_iterm2": True,
             "overrides": {
                 "eval": {
-                    "provider": "claude_code_tmux",
-                    "model": "claude-sonnet-4-6",
+                    "driver": "codex_tmux",
+                    "model": "gpt-5.4-mini",
                 }
             },
         },
@@ -180,154 +178,28 @@ def test_build_role_drivers_creates_shared_pool_for_tmux_eval_override(
         workers=2,
     )
 
-    assert isinstance(drivers.solver_driver, CodexTmuxSessionDriver)
+    assert isinstance(drivers.solver_driver, CodexExecSessionDriver)
     eval_driver = drivers.eval_driver_factory()
-    assert isinstance(eval_driver, ClaudeCodeTmuxSessionDriver)
+    assert isinstance(eval_driver, CodexTmuxSessionDriver)
     assert drivers.pane_pool is not None
     assert opened == ["mixed-pool-test"]
     drivers.close()
 
 
-def test_build_role_drivers_passes_effort_level_to_tmux_override(
-    monkeypatch,
+@pytest.mark.parametrize("driver_name", ["legacy_exec", "legacy_tmux", "unsupported_cli"])
+def test_build_role_drivers_rejects_unsupported_drivers(
+    driver_name: str,
     tmp_path: Path,
 ) -> None:
-    class _FakePool:
-        def __init__(self) -> None:
-            self.session_name = "claude-pool-test"
-            self.cwd = tmp_path
-
-        def close(self) -> None:
-            return None
-
-        def acquire(self, *, preferred_pane_id=None):  # noqa: ANN001, ARG002
-            return "%9"
-
-        def release(self, pane_id):  # noqa: ANN001, ARG002
-            return None
-
-        def reset_idle_banner(self, pane_id):  # noqa: ANN001, ARG002
-            return None
-
-    monkeypatch.setattr(
-        "scaling_evolve.algorithms.eve.runtime.driver.CodexTmuxPanePool.create",
-        lambda **kwargs: _FakePool(),
-    )
-    monkeypatch.setattr(
-        "scaling_evolve.algorithms.eve.runtime.driver.open_iterm2_window_for_session",
-        lambda session_name: None,
-    )
-
-    drivers = build_role_drivers(
-        {
-            "provider": "claude_code_tmux",
-            "model": "opus",
-            "effort_level": "auto",
-            "rollout_max_turns": 18,
-            "budget_prompt": False,
-            "overrides": {
-                "eval": {
-                    "effort_level": "low",
-                }
+    with pytest.raises(SystemExit, match="Unsupported driver"):
+        build_role_drivers(
+            {
+                "driver": driver_name,
+                "model": "gpt-5.4-mini",
             },
-        },
-        run_root=tmp_path / "run-root",
-        workers=2,
-    )
-
-    assert isinstance(drivers.solver_driver, ClaudeCodeTmuxSessionDriver)
-    assert drivers.solver_driver.effort_level == "auto"
-    assert drivers.solver_driver.rollout_max_turns == 18
-    assert drivers.solver_driver.budget_prompt is False
-    eval_driver = drivers.eval_driver_factory()
-    assert isinstance(eval_driver, ClaudeCodeTmuxSessionDriver)
-    assert eval_driver.effort_level == "low"
-    assert eval_driver.rollout_max_turns == 18
-    assert eval_driver.budget_prompt is False
-    drivers.close()
-
-
-def test_build_role_drivers_disables_web_tools_for_tmux_backend(
-    monkeypatch,
-    tmp_path: Path,
-) -> None:
-    class _FakePool:
-        def __init__(self) -> None:
-            self.session_name = "claude-pool-test"
-            self.cwd = tmp_path
-
-        def close(self) -> None:
-            return None
-
-        def acquire(self, *, preferred_pane_id=None):  # noqa: ANN001, ARG002
-            return "%9"
-
-        def release(self, pane_id):  # noqa: ANN001, ARG002
-            return None
-
-        def reset_idle_banner(self, pane_id):  # noqa: ANN001, ARG002
-            return None
-
-    monkeypatch.setattr(
-        "scaling_evolve.algorithms.eve.runtime.driver.CodexTmuxPanePool.create",
-        lambda **kwargs: _FakePool(),
-    )
-    monkeypatch.setattr(
-        "scaling_evolve.algorithms.eve.runtime.driver.open_iterm2_window_for_session",
-        lambda session_name: None,
-    )
-
-    drivers = build_role_drivers(
-        {
-            "provider": "claude_code_tmux",
-            "model": "opus",
-            "web_search": "disabled",
-        },
-        run_root=tmp_path / "run-root",
-        workers=2,
-    )
-
-    assert isinstance(drivers.solver_driver, ClaudeCodeTmuxSessionDriver)
-    assert drivers.solver_driver.disallowed_tools == ("WebSearch", "WebFetch")
-    drivers.close()
-
-
-def test_build_role_drivers_disables_web_tools_for_claude_code_backend(tmp_path: Path) -> None:
-    drivers = build_role_drivers(
-        {
-            "driver": "claude_code",
-            "model": "sonnet",
-            "web_search": "disabled",
-            "dangerously_skip_permissions": False,
-        },
-        run_root=tmp_path / "run-root",
-        workers=1,
-    )
-
-    assert isinstance(drivers.solver_driver, ClaudeCodeSessionDriver)
-    assert drivers.solver_driver.disallowed_tools == ("WebSearch", "WebFetch")
-    assert drivers.solver_driver.dangerously_skip_permissions is True
-    assert drivers.solver_driver.setting_sources == ("project", "local")
-
-
-def test_build_role_drivers_passes_budget_prompt_to_claude_code_backend(
-    tmp_path: Path,
-) -> None:
-    drivers = build_role_drivers(
-        {
-            "driver": "claude_code",
-            "model": "sonnet",
-            "budget_prompt": False,
-        },
-        run_root=tmp_path / "run-root",
-        workers=1,
-    )
-
-    assert isinstance(drivers.solver_driver, ClaudeCodeSessionDriver)
-    assert drivers.solver_driver.budget_prompt is False
-    eval_driver = drivers.eval_driver_factory()
-    assert isinstance(eval_driver, ClaudeCodeSessionDriver)
-    assert eval_driver.budget_prompt is False
+            run_root=tmp_path / "run-root",
+            workers=1,
+        )
 
 
 def test_build_role_drivers_builds_codex_exec_driver(tmp_path: Path) -> None:

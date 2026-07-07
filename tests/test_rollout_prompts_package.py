@@ -19,38 +19,6 @@ def _budget_prompt() -> BudgetPrompt:
     return BudgetPrompt(prompt_root=_PROMPT_ROOT)
 
 
-def test_inspect_transcript_turn_state_for_claude_payloads(tmp_path: Path) -> None:
-    transcript_path = tmp_path / "claude.jsonl"
-    transcript_path.write_text(
-        "\n".join(
-            [
-                (
-                    '{"type":"assistant","requestId":"req-1","message":{"id":"msg-1","content":'
-                    '[{"type":"text","text":"thinking"},{"type":"tool_use","id":"call-a",'
-                    '"name":"Read","input":{"file_path":"candidate.py"}},{"type":"tool_use",'
-                    '"id":"call-b","name":"Bash","input":{"command":"ls"}}]}}'
-                ),
-                (
-                    '{"type":"assistant","requestId":"req-1","message":{"id":"msg-1","content":'
-                    '[{"type":"tool_use","id":"call-a","name":"Read","input":{}}]}}'
-                ),
-                (
-                    '{"type":"assistant","requestId":"req-2","message":{"id":"msg-2","content":'
-                    '[{"type":"text","text":"final"}]}}'
-                ),
-            ]
-        )
-        + "\n",
-        encoding="utf-8",
-    )
-
-    state = inspect_transcript_turn_state(transcript_path)
-
-    assert state.format_name == "claude"
-    assert state.turn_count == 1
-    assert state.latest_batch_tool_ids == ("call-a",)
-
-
 def test_inspect_transcript_turn_state_for_codex_exec_payloads(tmp_path: Path) -> None:
     transcript_path = tmp_path / "codex-exec.jsonl"
     transcript_path.write_text(

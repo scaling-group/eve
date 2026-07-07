@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import base64
 import json
-import shlex
 from pathlib import Path
 
 _BINARY_PREFIX = "__scaling_evolve_binary_v1__:"
@@ -91,11 +90,6 @@ def expose_guidance_skills(workspace: Path) -> None:
     skills_dir.mkdir(parents=True, exist_ok=True)
 
     _ensure_symlink(
-        workspace / ".claude" / "skills",
-        Path("..") / "guidance" / "skills",
-        target_is_directory=True,
-    )
-    _ensure_symlink(
         workspace / ".codex" / "skills",
         Path("..") / "guidance" / "skills",
         target_is_directory=True,
@@ -109,52 +103,13 @@ def expose_guidance_agents(workspace: Path) -> None:
     guidance agents remain visible during the same workspace. Immutable files may
     later be written through these symlinks as overlay files.
     """
-    agent_specs = (
-        (workspace / "guidance" / "agents" / "codex", workspace / ".codex" / "agents"),
-        (workspace / "guidance" / "agents" / "claude", workspace / ".claude" / "agents"),
+    source_dir = workspace / "guidance" / "agents" / "codex"
+    source_dir.mkdir(parents=True, exist_ok=True)
+    _ensure_symlink(
+        workspace / ".codex" / "agents",
+        Path("..") / "guidance" / "agents" / "codex",
+        target_is_directory=True,
     )
-    for source_dir, destination_dir in agent_specs:
-        source_dir.mkdir(parents=True, exist_ok=True)
-        _ensure_symlink(
-            destination_dir,
-            Path("..") / "guidance" / "agents" / source_dir.name,
-            target_is_directory=True,
-        )
-
-
-def write_claude_stop_hook_settings(
-    workspace: Path,
-    *,
-    signal_filename: str = ".claude-task-stopped",
-    log_filename: str = ".claude-stop-hook.log",
-) -> None:
-    """Write workspace-local Claude Stop hook settings for tmux completion detection."""
-
-    signal_path = workspace / signal_filename
-    log_path = workspace / log_filename
-    settings_path = workspace / ".claude" / "settings.local.json"
-    settings_path.parent.mkdir(parents=True, exist_ok=True)
-    payload = {
-        "hooks": {
-            "Stop": [
-                {
-                    "matcher": "",
-                    "hooks": [
-                        {
-                            "type": "command",
-                            "command": (
-                                f"touch {shlex.quote(str(signal_path))} && "
-                                f"date -u +%Y-%m-%dT%H:%M:%SZ >> {shlex.quote(str(log_path))} && "
-                                "echo '{\"continue\": true}'"
-                            ),
-                            "timeout": 5,
-                        }
-                    ],
-                }
-            ]
-        }
-    }
-    settings_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
 
 
 def _ensure_symlink(path: Path, target: Path, *, target_is_directory: bool = False) -> None:

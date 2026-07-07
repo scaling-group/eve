@@ -1,6 +1,6 @@
 # Using EvE
 
-Orientation for any agent (Claude Code or Codex) operating this repo. Included from `CLAUDE.md` / `AGENTS.md`.
+Orientation for agents operating this repo. Included from `AGENTS.md`.
 
 ## What EvE is
 
@@ -8,7 +8,7 @@ EvE is an evolutionary loop for optimizing solutions to a task. Worker agents ("
 
 ## Your role
 
-When you open this repo you are **operating** EvE: you set up a task, launch runs, then **supervise, pause, adjust, resume, import, inspect, and debug** them. The skills under `docs/skills/` are your verbs; we have linked `.agents/skills` and `.claude/skills` to this folder so supported agent entrypoints can load them automatically. Reach for the matching skill instead of improvising.
+When you open this repo you are **operating** EvE: you set up a task, launch runs, then **supervise, pause, adjust, resume, import, inspect, and debug** them. The skills under `docs/skills/` are your verbs; we have linked `.agents/skills` to this folder so supported agent entrypoints can load them automatically. Reach for the matching skill instead of improvising.
 
 ## Boundary (do not cross)
 

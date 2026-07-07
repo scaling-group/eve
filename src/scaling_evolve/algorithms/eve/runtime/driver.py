@@ -10,21 +10,17 @@ from typing import Any, cast
 
 import yaml
 
-from scaling_evolve.providers.agent.config import AgentProviderConfig
 from scaling_evolve.providers.agent.drivers._metadata import TokenPricing, parse_token_pricing
 from scaling_evolve.providers.agent.drivers.base import SessionDriver
-from scaling_evolve.providers.agent.drivers.claude_code_tmux import (
-    ClaudeCodeTmuxSessionDriver,
-)
 from scaling_evolve.providers.agent.drivers.codex_exec import CodexExecSessionDriver
 from scaling_evolve.providers.agent.drivers.codex_tmux import (
     CodexTmuxPanePool,
     CodexTmuxSessionDriver,
 )
-from scaling_evolve.providers.agent.drivers.factory import build_claude_code_session_driver
 from scaling_evolve.providers.agent.tmux_runtime import open_iterm2_window_for_session
 
 _ROLE_NAMES = ("solver", "eval")
+_SUPPORTED_DRIVER_NAMES = ("codex_exec", "codex_tmux")
 
 # Repo root, used to resolve repo-relative asset paths in driver config (e.g.
 # `system_prompt_file`) the same way application assets are resolved.
@@ -53,7 +49,8 @@ def build_driver(
     pricing_table: Mapping[str, TokenPricing] | None = None,
 ) -> SessionDriver:
     role_cfg = _driver_cfg_for_role(driver_cfg, role)
-    if _driver_name(role_cfg) == "codex_tmux":
+    driver_name = _driver_name(role_cfg)
+    if driver_name == "codex_tmux":
         return _build_codex_tmux_driver(
             role_cfg,
             role=role,
@@ -61,44 +58,22 @@ def build_driver(
             pane_pool=pane_pool,
             pricing_table=pricing_table,
         )
-    if _driver_name(role_cfg) == "codex_exec":
+    if driver_name == "codex_exec":
         return _build_codex_exec_driver(
             role_cfg,
             role=role,
             run_root=run_root,
             pricing_table=pricing_table,
         )
-    if _driver_name(role_cfg) == "claude_code_tmux":
-        return _build_claude_code_tmux_driver(
-            role_cfg,
-            role=role,
-            run_root=run_root,
-            pane_pool=pane_pool,
-            pricing_table=pricing_table,
+    if driver_name is None:
+        raise SystemExit(
+            "Missing driver config. Set `driver.driver` or `driver.provider` to "
+            "`codex_exec` or `codex_tmux`."
         )
-
-    normalized_cfg = dict(role_cfg)
-    normalized_cfg.setdefault("kind", "agent_fork")
-    normalized_cfg.setdefault("driver", "claude_code")
-    normalized_cfg.pop("pool_size", None)
-    normalized_cfg.pop("open_iterm2", None)
-    normalized_cfg.pop("dangerously_skip_permissions", None)
-    normalized_cfg.pop("web_search", None)
-    normalized_cfg.pop("search_enabled", None)
-    normalized_cfg["budget_prompt"] = _bool_config(
-        role_cfg.get("budget_prompt"),
-        default=True,
+    raise SystemExit(
+        f"Unsupported driver `{driver_name}`. Supported drivers: "
+        f"{', '.join(_SUPPORTED_DRIVER_NAMES)}."
     )
-    config = AgentProviderConfig.model_validate(normalized_cfg)
-    disallowed_tools = _claude_disallowed_tools_from_driver_cfg(role_cfg)
-    try:
-        return build_claude_code_session_driver(
-            config,
-            disallowed_tools=disallowed_tools,
-            pricing_table=pricing_table,
-        )
-    except ValueError as error:
-        raise SystemExit(str(error)) from error
 
 
 def build_driver_factory(
@@ -128,8 +103,7 @@ def build_role_drivers(
 ) -> EveDriverSet:
     pane_pool: CodexTmuxPanePool | None = None
     if any(
-        _driver_name(_driver_cfg_for_role(driver_cfg, role_name))
-        in {"codex_tmux", "claude_code_tmux"}
+        _driver_name(_driver_cfg_for_role(driver_cfg, role_name)) == "codex_tmux"
         for role_name in _ROLE_NAMES
     ):
         pool_size = _int_config(driver_cfg.get("pool_size"), default=workers)
@@ -244,54 +218,6 @@ def _build_codex_exec_driver(
     )
 
 
-def _build_claude_code_tmux_driver(
-    driver_cfg: dict[str, Any],
-    *,
-    role: str | None,
-    run_root: str | Path | None,
-    pane_pool: CodexTmuxPanePool | None,
-    pricing_table: Mapping[str, TokenPricing] | None,
-) -> ClaudeCodeTmuxSessionDriver:
-    if pane_pool is None:
-        if run_root is None:
-            raise ValueError(
-                "claude_code_tmux requires run_root so it can create a pane pool session."
-            )
-        pane_pool = CodexTmuxPanePool.create(
-            session_name=_tmux_session_name(run_root),
-            cwd=run_root,
-            pane_count=_int_config(driver_cfg.get("pool_size"), default=1),
-        )
-        owns_pool = True
-    else:
-        owns_pool = False
-    resolved_run_root = Path(run_root or pane_pool.cwd).expanduser().resolve()
-    setting_sources = _claude_setting_sources_from_driver_cfg(driver_cfg)
-    disallowed_tools = _claude_disallowed_tools_from_driver_cfg(driver_cfg)
-    return ClaudeCodeTmuxSessionDriver(
-        pane_pool=pane_pool,
-        run_root=resolved_run_root,
-        executable=str(driver_cfg.get("executable") or "claude"),
-        model=_string_config(driver_cfg.get("model")),
-        effort_level=_string_config(
-            driver_cfg.get("effort_level") or driver_cfg.get("reasoning_effort")
-        ),
-        rollout_max_turns=_int_config(driver_cfg.get("rollout_max_turns"), default=200),
-        budget_prompt=_bool_config(driver_cfg.get("budget_prompt"), default=True),
-        timeout_seconds=float(driver_cfg.get("timeout_seconds") or 900.0),
-        role=role,
-        setting_sources=setting_sources or ("project", "local"),
-        disallowed_tools=disallowed_tools,
-        dangerously_skip_permissions=_bool_config(
-            driver_cfg.get("dangerously_skip_permissions"),
-            default=True,
-        ),
-        token_pricing=_token_pricing_from_driver_cfg(driver_cfg),
-        pricing_table=pricing_table,
-        owns_pool=owns_pool,
-    )
-
-
 def _driver_cfg_for_role(driver_cfg: dict[str, Any], role: str | None) -> dict[str, Any]:
     resolved = {key: value for key, value in driver_cfg.items() if key != "overrides"}
     if role is None:
@@ -332,14 +258,14 @@ def load_pricing_table(path: str | Path) -> dict[str, TokenPricing]:
     return table
 
 
-def _driver_name(driver_cfg: dict[str, Any]) -> str:
+def _driver_name(driver_cfg: dict[str, Any]) -> str | None:
     raw_driver = driver_cfg.get("driver")
     if isinstance(raw_driver, str) and raw_driver:
         return raw_driver
     raw_provider = driver_cfg.get("provider")
     if isinstance(raw_provider, str) and raw_provider:
         return raw_provider
-    return "claude_code"
+    return None
 
 
 def _int_config(value: object, *, default: int) -> int:
@@ -376,25 +302,6 @@ def _web_search_from_driver_cfg(driver_cfg: dict[str, Any]) -> str:
         if normalized in {"disabled", "live", "cached"}:
             return normalized
     return "live" if _bool_config(driver_cfg.get("search_enabled"), default=False) else "disabled"
-
-
-def _claude_setting_sources_from_driver_cfg(driver_cfg: dict[str, Any]) -> tuple[str, ...]:
-    raw_setting_sources = driver_cfg.get("setting_sources")
-    if isinstance(raw_setting_sources, list):
-        setting_sources = tuple(
-            str(source)
-            for source in raw_setting_sources
-            if str(source).strip() in {"user", "project", "local"}
-        )
-        if setting_sources:
-            return setting_sources
-    return ("project", "local")
-
-
-def _claude_disallowed_tools_from_driver_cfg(driver_cfg: dict[str, Any]) -> tuple[str, ...]:
-    if _web_search_from_driver_cfg(driver_cfg) == "disabled":
-        return ("WebSearch", "WebFetch")
-    return ()
 
 
 def _string_config(value: object) -> str | None:

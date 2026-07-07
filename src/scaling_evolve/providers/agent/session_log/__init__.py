@@ -6,9 +6,6 @@ from pathlib import Path
 from typing import Any
 
 from scaling_evolve.providers.agent.drivers.base import SessionRollout
-from scaling_evolve.providers.agent.session_log.claude_code_parser import (
-    parse_claude_code_session,
-)
 from scaling_evolve.providers.agent.session_log.codex_parser import parse_codex_session
 from scaling_evolve.providers.agent.session_log.schema import render_session_markdown
 
@@ -48,12 +45,6 @@ def _dispatch_parser(
         if parsed is not None and driver_name is not None:
             parsed.provider = driver_name
         return parsed
-    if driver_name in {"claude_code", "claude_code_tmux"}:
-        return parse_claude_code_session(
-            transcript_path,
-            session_id=rollout.state.session_id,
-            effort=_driver_effort(getattr(rollout.state, "metadata", {}) or {}),
-        )
     return None
 
 
@@ -67,14 +58,6 @@ def _driver_name(metadata: dict[str, Any]) -> str | None:
         if isinstance(driver, str) and driver:
             return driver
     return None
-
-
-def _driver_effort(metadata: dict[str, Any]) -> str | None:
-    execution = metadata.get("driver_execution")
-    if not isinstance(execution, dict):
-        return None
-    effort = execution.get("effort_level")
-    return effort if isinstance(effort, str) and effort else None
 
 
 def _summarize_usage(rollouts: list[SessionRollout]) -> dict[str, int | float]:

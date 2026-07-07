@@ -248,27 +248,6 @@ def test_workspace_guard_blocks_python_target_outside_workspace(tmp_path: Path) 
     assert "outside your workspace" in result.stderr
 
 
-def test_workspace_guard_allows_claude_background_task_output_reads(tmp_path: Path) -> None:
-    workspace = tmp_path / "workspaces" / "node-0001"
-    workspace.mkdir(parents=True)
-    evaluator_dir = tmp_path / "src" / "scaling_evolve" / "applications"
-    evaluator_dir.mkdir(parents=True)
-    task_output = (
-        tmp_path / "private" / "tmp" / "claude-501" / "session" / "tasks" / "task-1.output"
-    )
-    task_output.parent.mkdir(parents=True)
-    task_output.write_text("done\n", encoding="utf-8")
-    _write_config(workspace, evaluator_dir=evaluator_dir)
-
-    result = _run_hook(
-        cwd=workspace,
-        tool_name="Bash",
-        tool_input={"command": f"cat {task_output}"},
-    )
-
-    assert result.returncode == 0
-
-
 def test_workspace_guard_post_tool_use_emits_budget_context_once_per_turn(tmp_path: Path) -> None:
     workspace = tmp_path / "workspaces" / "node-0001"
     workspace.mkdir(parents=True)
@@ -347,55 +326,6 @@ def test_workspace_guard_session_start_emits_system_context(tmp_path: Path) -> N
 
     assert result.returncode == 0
     assert payload["hookSpecificOutput"]["additionalContext"] == "system prompt from rollout config"
-
-
-def test_workspace_guard_post_tool_use_emits_budget_context_once_per_turn_for_claude_transcript(
-    tmp_path: Path,
-) -> None:
-    workspace = tmp_path / "workspaces" / "node-0001"
-    workspace.mkdir(parents=True)
-    evaluator_dir = tmp_path / "src" / "scaling_evolve" / "applications"
-    evaluator_dir.mkdir(parents=True)
-    _write_config(workspace, evaluator_dir=evaluator_dir)
-    _write_agent_hooks_config(workspace, rollout_max_turns=4)
-    transcript_path = workspace / "claude-rollout.jsonl"
-    transcript_path.write_text(
-        "\n".join(
-            [
-                (
-                    '{"type":"assistant","message":{"id":"msg-1","content":'
-                    '[{"type":"tool_use","id":"call-1","name":"Read","input":{}},'
-                    '{"type":"tool_use","id":"call-2","name":"Bash","input":{}}]}}'
-                )
-            ]
-        )
-        + "\n",
-        encoding="utf-8",
-    )
-
-    first = _run_hook(
-        cwd=workspace,
-        hook_event_name="PostToolUse",
-        tool_name="Read",
-        tool_input={},
-        extra_payload={"tool_use_id": "call-1", "transcript_path": str(transcript_path)},
-    )
-    second = _run_hook(
-        cwd=workspace,
-        hook_event_name="PostToolUse",
-        tool_name="Read",
-        tool_input={},
-        extra_payload={"tool_use_id": "call-2", "transcript_path": str(transcript_path)},
-    )
-
-    first_payload = json.loads(first.stdout)
-
-    assert first.returncode == 0
-    assert second.returncode == 0
-    assert (
-        "[Budget] 3/4 turns remaining" in first_payload["hookSpecificOutput"]["additionalContext"]
-    )
-    assert second.stdout == ""
 
 
 def test_workspace_guard_pre_tool_use_preserves_budget_file(tmp_path: Path) -> None:

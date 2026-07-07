@@ -27,9 +27,6 @@ from scaling_evolve.core.mutation import (
     ProjectedState,
 )
 from scaling_evolve.core.storage.models import ArtifactRef, MaterializationRef
-from scaling_evolve.providers.agent.codex_hooks import (
-    workspace_hook_command,
-)
 from scaling_evolve.providers.agent.compaction import compact_metadata_from_transcript
 from scaling_evolve.providers.agent.config import AgentProviderConfig
 from scaling_evolve.providers.agent.drivers.base import (
@@ -70,6 +67,12 @@ def _as_mapping(value: object) -> Mapping[str, JSONValue] | None:
     if not isinstance(value, Mapping):
         return None
     return cast(Mapping[str, JSONValue], value)
+
+
+def _artifact_slug(value: object, *, default: str) -> str:
+    text = value if isinstance(value, str) and value else default
+    rendered = "".join(char if char.isalnum() or char in {"-", "_"} else "_" for char in text)
+    return rendered.strip("_") or default
 
 
 class AgentProvider:
@@ -113,7 +116,7 @@ class AgentProvider:
         # forked children can keep continuation state and prompt-cache locality.
         # Once multiple children share that slot, the slot becomes a serialized
         # resource: concurrent prepare/edit/sync cycles would race on the same
-        # candidate.py and Claude driver metadata.
+        # candidate.py and driver metadata.
         key = str(Path(session_cwd).expanduser().resolve(strict=False))
         with self._session_cwd_locks_guard:
             lock = self._session_cwd_locks.setdefault(key, threading.RLock())
@@ -340,8 +343,6 @@ class AgentProvider:
         self._write_workspace_python_runtime(runtime_root, request)
         self._write_workspace_budget_status(runtime_root, request)
         self._write_workspace_rollout_prompt_config(runtime_root)
-        if self.config.driver in {"claude_code", "claude_code_tmux"}:
-            self._write_workspace_claude_settings(runtime_root)
         self._write_workspace_recovery_guidance(runtime_root, request)
 
     def _sync_workspace_tree_to_session_cwd(
@@ -349,11 +350,8 @@ class AgentProvider:
         workspace_root: Path,
         session_cwd: Path,
     ) -> None:
-        preserve_names = {".claude-driver-config"}
         session_cwd.mkdir(parents=True, exist_ok=True)
         for existing in list(session_cwd.iterdir()):
-            if existing.name in preserve_names:
-                continue
             if (workspace_root / existing.name).exists():
                 continue
             if existing.is_dir():
@@ -361,8 +359,6 @@ class AgentProvider:
             else:
                 existing.unlink(missing_ok=True)
         for source in workspace_root.iterdir():
-            if source.name in preserve_names:
-                continue
             target = session_cwd / source.name
             if source.is_dir():
                 if target.exists():
@@ -447,33 +443,6 @@ class AgentProvider:
             evaluator_dirs=tuple(self._evaluator_dirs(request)),
         )
 
-    def _write_workspace_claude_settings(self, workspace_root: Path) -> None:
-        claude_dir = workspace_root / ".claude"
-        claude_dir.mkdir(parents=True, exist_ok=True)
-        hook_command = self._workspace_hook_command()
-        settings = {
-            "hooks": {
-                "PreToolUse": [
-                    {
-                        "matcher": "Bash|Read|Edit|Write|MultiEdit|Glob|Grep",
-                        "hooks": [
-                            {
-                                "type": "command",
-                                "command": hook_command,
-                            }
-                        ],
-                    }
-                ],
-                "SessionStart": [{"hooks": [{"type": "command", "command": hook_command}]}],
-                "UserPromptSubmit": [{"hooks": [{"type": "command", "command": hook_command}]}],
-                "PostToolUse": [{"hooks": [{"type": "command", "command": hook_command}]}],
-            }
-        }
-        (claude_dir / "settings.json").write_text(
-            json.dumps(settings, indent=2) + "\n",
-            encoding="utf-8",
-        )
-
     def _write_workspace_rollout_prompt_config(self, workspace_root: Path) -> None:
         from scaling_evolve.algorithms.eve.rollout_prompts.default import (
             BudgetPrompt,
@@ -506,9 +475,6 @@ class AgentProvider:
             json.dumps(payload, indent=2) + "\n",
             encoding="utf-8",
         )
-
-    def _workspace_hook_command(self) -> str:
-        return workspace_hook_command()
 
     def _python_execution_policy(self) -> PythonExecutionPolicy:
         managed = any(
@@ -562,7 +528,7 @@ class AgentProvider:
     ) -> None:
         if not self._workspace_recovery_guidance_enabled(request):
             return
-        guide_path = workspace_root / "CLAUDE.md"
+        guide_path = workspace_root / "AGENTS.md"
         start_marker = "<!-- scaling-evolve-recovery:start -->"
         end_marker = "<!-- scaling-evolve-recovery:end -->"
         section = "\n".join(
@@ -1105,7 +1071,7 @@ class AgentProvider:
             return None
         source_path = Path(raw_source_path).expanduser()
         if not source_path.exists():
-            _LOGGER.warning("Claude transcript archive missing at %s", source_path)
+            _LOGGER.warning("Provider transcript archive missing at %s", source_path)
             return None
         try:
             return artifact_store.put_bytes(
@@ -1116,7 +1082,7 @@ class AgentProvider:
                 metadata={"source_path": str(source_path)},
             )
         except Exception as error:
-            _LOGGER.warning("Failed to archive Claude transcript %s: %s", source_path, error)
+            _LOGGER.warning("Failed to archive provider transcript %s: %s", source_path, error)
             return None
 
     def _persist_driver_debug_artifacts(
@@ -1137,16 +1103,17 @@ class AgentProvider:
         execution_metadata: dict[str, JSONValue] = dict(execution_payload)
         artifact_refs: list[ArtifactRef] = []
         edge_id = self._edge_id(request.request_id, request)
+        driver_slug = _artifact_slug(execution_metadata.get("driver"), default="driver")
 
         if artifact_store is not None:
             if isinstance(raw_stdout, str):
                 stdout_ref = artifact_store.put_text(
                     ArtifactKind.MODEL_RESPONSE_RAW_JSON,
                     raw_stdout,
-                    filename=f"{edge_id}.claude_code.stdout.jsonl",
+                    filename=f"{edge_id}.{driver_slug}.stdout.jsonl",
                     edge_id=edge_id,
                     metadata={
-                        "driver": "claude_code",
+                        "driver": driver_slug,
                         "command": execution_metadata.get("command"),
                         "cwd": execution_metadata.get("cwd"),
                         "exit_code": execution_metadata.get("exit_code"),
@@ -1158,9 +1125,9 @@ class AgentProvider:
                 result_ref = artifact_store.put_json(
                     ArtifactKind.MODEL_RESPONSE_PARSED_JSON,
                     dict(result_payload),
-                    filename=f"{edge_id}.claude_code.result.json",
+                    filename=f"{edge_id}.{driver_slug}.result.json",
                     edge_id=edge_id,
-                    metadata={"driver": "claude_code"},
+                    metadata={"driver": driver_slug},
                 )
                 artifact_refs.append(result_ref)
                 execution_metadata["result_ref"] = result_ref.model_dump(mode="json")
@@ -1168,9 +1135,9 @@ class AgentProvider:
                 stderr_ref = artifact_store.put_text(
                     ArtifactKind.FAILURE_SUMMARY_TXT,
                     raw_stderr,
-                    filename=f"{edge_id}.claude_code.stderr.txt",
+                    filename=f"{edge_id}.{driver_slug}.stderr.txt",
                     edge_id=edge_id,
-                    metadata={"driver": "claude_code"},
+                    metadata={"driver": driver_slug},
                 )
                 artifact_refs.append(stderr_ref)
                 execution_metadata["stderr_ref"] = stderr_ref.model_dump(mode="json")

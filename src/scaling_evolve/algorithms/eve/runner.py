@@ -398,14 +398,14 @@ def _driver_cfg_for_role(driver_cfg: dict[str, object], role: str) -> dict[str, 
     return resolved
 
 
-def _driver_name(driver_cfg: dict[str, object]) -> str:
+def _driver_name(driver_cfg: dict[str, object]) -> str | None:
     raw_driver = driver_cfg.get("driver")
     if isinstance(raw_driver, str) and raw_driver:
         return raw_driver
     raw_provider = driver_cfg.get("provider")
     if isinstance(raw_provider, str) and raw_provider:
         return raw_provider
-    return "claude_code"
+    return None
 
 
 if __name__ == "__main__":

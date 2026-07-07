@@ -30,18 +30,12 @@ You should strictly work in the current workspace, which looks like the followin
 ```text
 workspace_root/
 ├── AGENTS.md        ← workspace agent instructions
-├── CLAUDE.md        ← workspace agent instructions
 ├── README.md        ← workspace-specific notes, must read.
 ├── guidance/        ← optimizer guidance files.
-│   ├── skills/      ← skill tree exposed through `.claude/skills`
-│   │                   and `.codex/skills`
-│   ├── agents/      ← subagent trees exposed through `.claude/agents`
-│   │   ├── claude/      and `.codex/agents`
-│   │   └── codex/
+│   ├── skills/      ← skill tree exposed through `.codex/skills`
+│   ├── agents/
+│   │   └── codex/   ← subagent tree exposed through `.codex/agents`
 │   └── other files  ← ordinary optimizer guidance notes/docs, must read all files.
-├── .claude/
-│   ├── agents -> ../guidance/agents/claude
-│   └── skills -> ../guidance/skills
 ├── .codex/
 │   ├── agents -> ../guidance/agents/codex
 │   └── skills -> ../guidance/skills
@@ -81,8 +75,7 @@ scripts, and verification scripts, belongs in `solver/proof/`, not in
 Optimizer guidance are in `guidance/` folder.
 
 Guidance exposure:
-- `guidance/skills/` is symlinked as `.claude/skills` and `.codex/skills`.
-- `guidance/agents/claude/` is symlinked as `.claude/agents`.
+- `guidance/skills/` is symlinked as `.codex/skills`.
 - `guidance/agents/codex/` is symlinked as `.codex/agents`.
 
 New or edited guidance skills and agents are visible through those symlinks
@@ -131,7 +124,7 @@ The solver will be evaluated based on `scoring_rubrics.md`. For all dimensions, 
 
 2. You should also improve the files in `guidance/`, following the instructions above.
 
-**MANDATORY:** Before you stop, you MUST invoke the `reference-validator` and then `check-runner` sub-agents from `.claude/agents/` or `.codex/agents/`, depending on which runtime you are using. Have them execute their configured workflow from the workspace root. These subagents will provide necessary checks without formal evaluation. Do NOT finish without running these checks. If anything fails, repair the output and rerun the check until they pass.
+**MANDATORY:** Before you stop, you MUST invoke the `reference-validator` and then `check-runner` sub-agents from `.codex/agents/`. Have them execute their configured workflow from the workspace root. These subagents will provide necessary checks without formal evaluation. Do NOT finish without running these checks. If anything fails, repair the output and rerun the check until they pass.
 
 Do not ask the human for clarification, approval, or feedback at any point during this run. Do the work autonomously, finish your edits, provide your final summary, and stop.
 

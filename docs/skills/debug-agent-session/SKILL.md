@@ -9,10 +9,9 @@ When a run looks wrong (stalled, gaming, no progress) and the score/population d
 
 ## Where the rollout session is
 
-Each active solver worker runs in `<run_root>/solver_workspaces/<workspace_id>/`. The agent's own session record (JSONL, one event per line) lives there, by driver:
+Each active solver worker runs in `<run_root>/solver_workspaces/<workspace_id>/`. The agent's own session record (JSONL, one event per line) lives there:
 
 - Codex: `<workspace_id>/.codex-driver-transcripts/<session>.jsonl` (full rollout also under `<workspace_id>/.codex-driver-home/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl`)
-- Claude Code: `<workspace_id>/.claude-driver-transcripts/<session>.jsonl`
 
 A `*-live.jsonl` is an in-progress session; the non-live file is the completed snapshot. (Note: `<run_root>/artifacts/<run-id>_solver/transcripts/` holds the optimization *log trees*, not the agent conversation, use the workspace JSONL for behavior.) To find the workspace for a suspect candidate, locate its `..._step_<n>_...` directory under `<run_root>/solver_workspaces/` (see `../inspect-population/SKILL.md`); there is no DB column mapping an entry to its workspace path.
 

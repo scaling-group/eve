@@ -22,8 +22,7 @@ Workspace layout:
 |       |-- logs/         # Logs for that solver example.
 |       |   `-- evaluate/ # Evaluation logs for that solver example.
 |       `-- score.yaml    # Evaluation score for that solver example.
-|-- .codex/agents/        # Codex evaluation helper agents.
-|-- .claude/agents/       # Claude evaluation helper agents.
+|-- .codex/agents/        # Evaluation helper agents.
 `-- ...
 ```
 
@@ -107,11 +106,9 @@ aggregate `score`.
 ## Score Schema Checker
 
 Before you stop, invoke the predefined `score-schema-checker` subagent from
-`.claude/agents/score-schema-checker.md` or
-`.codex/agents/score-schema-checker.toml`, depending on the current runtime.
-Run it after writing `logs/evaluate/score.yaml`. Do not finish until you have
-reviewed that report and, if anything fails, repaired `score.yaml` and rerun
-the checker.
+`.codex/agents/score-schema-checker.toml`. Run it after writing
+`logs/evaluate/score.yaml`. Do not finish until you have reviewed that report
+and, if anything fails, repaired `score.yaml` and rerun the checker.
 
 Start a fresh `score-schema-checker` subagent from the current evaluation
 workspace root. The local agent definition is a provider-native subagent, not a

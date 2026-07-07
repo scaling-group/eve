@@ -6,19 +6,12 @@ from pathlib import Path
 from scaling_evolve.algorithms.eve.workspace.runtime_hooks import (
     install_workspace_runtime_hooks,
 )
-from scaling_evolve.providers.agent.drivers.claude_code_tmux import (
-    ClaudeCodeTmuxSessionDriver,
-)
 from scaling_evolve.providers.agent.drivers.codex_exec import CodexExecSessionDriver
 
 
-def test_install_workspace_runtime_hooks_writes_claude_settings(tmp_path: Path) -> None:
+def test_install_workspace_runtime_hooks_writes_rollout_prompt_config(tmp_path: Path) -> None:
     workspace = tmp_path / "workspace"
-    driver = ClaudeCodeTmuxSessionDriver(
-        pane_id="%9",
-        run_root=tmp_path / "run-root",
-        rollout_max_turns=20,
-    )
+    driver = CodexExecSessionDriver(run_root=tmp_path / "run-root", rollout_max_turns=20)
     prompt_specs = [
         {
             "name": "budget",
@@ -34,16 +27,10 @@ def test_install_workspace_runtime_hooks_writes_claude_settings(tmp_path: Path) 
     prompt_payload = json.loads(
         (workspace / ".hooks" / "rollout_prompts.json").read_text(encoding="utf-8")
     )
-    settings_payload = json.loads(
-        (workspace / ".claude" / "settings.json").read_text(encoding="utf-8")
-    )
 
     assert not (workspace / ".sandbox_config.json").exists()
     assert prompt_payload["version"] == 2
     assert prompt_payload["prompts"] == prompt_specs
-    assert settings_payload["hooks"]["SessionStart"][0]["hooks"][0]["type"] == "command"
-    assert settings_payload["hooks"]["UserPromptSubmit"][0]["hooks"][0]["type"] == "command"
-    assert settings_payload["hooks"]["PostToolUse"][0]["hooks"][0]["type"] == "command"
 
 
 def test_install_workspace_runtime_hooks_leaves_codex_hooks_to_driver_launch(

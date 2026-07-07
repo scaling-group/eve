@@ -31,18 +31,12 @@ You should strictly work in the current workspace, which looks like the followin
 ```text
 workspace_root/
 ├── AGENTS.md        ← workspace agent instructions
-├── CLAUDE.md        ← workspace agent instructions
 ├── README.md        ← workspace-specific notes, must read.
 ├── guidance/        ← optimizer guidance files.
-│   ├── skills/      ← skill tree exposed through `.claude/skills`
-│   │                   and `.codex/skills`
-│   ├── agents/      ← subagent trees exposed through `.claude/agents`
-│   │   ├── claude/      and `.codex/agents`
-│   │   └── codex/
+│   ├── skills/      ← skill tree exposed through `.codex/skills`
+│   ├── agents/
+│   │   └── codex/   ← subagent tree exposed through `.codex/agents`
 │   └── other files  ← other optimizer guidance notes/docs, please read.
-├── .claude/
-│   ├── agents -> ../guidance/agents/claude
-│   └── skills -> ../guidance/skills
 ├── .codex/
 │   ├── agents -> ../guidance/agents/codex
 │   └── skills -> ../guidance/skills
@@ -77,8 +71,7 @@ You may modify any editable files/folders within `solver/`. Other files inside
 Optimizer guidance lives in the `guidance/` folder.
 
 Guidance exposure:
-- `guidance/skills/` is symlinked as `.claude/skills` and `.codex/skills`.
-- `guidance/agents/claude/` is symlinked as `.claude/agents`.
+- `guidance/skills/` is symlinked as `.codex/skills`.
 - `guidance/agents/codex/` is symlinked as `.codex/agents`.
 
 New or edited guidance skills and agents are visible through those symlinks
@@ -115,12 +108,11 @@ You have two goals:
    would help the current and future iterations.
 
 **MANDATORY:** Before you stop, you MUST invoke the predefined `check-runner`
-sub-agent from `.claude/agents/check-runner.md` or
-`.codex/agents/check-runner.toml`, depending on which runtime you are using.
-Have it execute its configured check workflow from the workspace root. The
-check-runner will provide necessary sanity checks without formal evaluation. Do
-NOT finish without running this check. If anything fails, repair the output and
-rerun the check until it passes.
+sub-agent from `.codex/agents/check-runner.toml`. Have it execute its
+configured check workflow from the workspace root. The check-runner will provide
+necessary sanity checks without formal evaluation. Do NOT finish without running
+this check. If anything fails, repair the output and rerun the check until it
+passes.
 
 Do not ask the human for clarification, approval, or feedback at any point during
 this run. Do the work autonomously, finish your edits, provide your final
