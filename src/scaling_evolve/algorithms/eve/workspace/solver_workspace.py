@@ -21,7 +21,6 @@ from scaling_evolve.algorithms.eve.workspace.file_tree import (
     expose_guidance_agents,
     expose_guidance_skills,
     read_file_tree,
-    write_claude_stop_hook_settings,
     write_file_tree,
 )
 from scaling_evolve.algorithms.eve.workspace.immutable_renderers.base import (
@@ -189,8 +188,6 @@ class SolverWorkspaceBuilder:
         shutil.copytree(self.problem.snapshot_root, solver_dir)
         if prefill_solver is not None:
             write_file_tree(solver_dir, prefill_solver.files)
-        write_claude_stop_hook_settings(ws)
-
         return ws, prefill_solver
 
     def write_immutable_assets(
@@ -325,9 +322,7 @@ class SolverWorkspaceBuilder:
         overlay_paths: set[str] = set()
         prefixes = (
             (".codex/skills/", "skills/"),
-            (".claude/skills/", "skills/"),
             (".codex/agents/", "agents/codex/"),
-            (".claude/agents/", "agents/claude/"),
         )
         for path in worker_config.immutable_files:
             for source_prefix, guidance_prefix in prefixes:

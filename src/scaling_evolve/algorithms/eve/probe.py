@@ -107,21 +107,6 @@ def _probe_solver(workspace: Path, driver) -> dict[str, object]:
     )
     _write(workspace / "guidance" / "notes.md", "# Probe Guidance\nKeep changes tiny.\n")
     _write(
-        workspace / ".claude" / "agents" / "check-runner.md",
-        "\n".join(
-            [
-                "---",
-                "name: check-runner",
-                'description: "Run the solver smoke check and report PASS or FAIL."',
-                "tools: Bash, Read",
-                "---",
-                "",
-                "python3 -m py_compile candidate.py",
-            ]
-        )
-        + "\n",
-    )
-    _write(
         workspace / ".codex" / "agents" / "check-runner.toml",
         "\n".join(
             [

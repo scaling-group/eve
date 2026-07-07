@@ -91,7 +91,7 @@ The driver config lives under the top-level `driver:` key.
 - Role overrides are shallow merges: EvE starts from the base `driver` mapping, then overlays `driver.overrides.solver` or `driver.overrides.eval`.
 - Do not configure `driver.overrides.optimizer`; the independent optimizer driver role was removed.
 
-Supported backend names in code include `codex_exec`, `codex_tmux`, `claude_code`, and `claude_code_tmux`. The public presets should still remain `codex_smoke` and `codex_max`.
+Supported backend names are `codex_exec` and `codex_tmux`. The public presets should still remain `codex_smoke` and `codex_max`.
 
 ## Driver Options
 
@@ -112,7 +112,7 @@ Common Codex-style fields (`codex_exec`, `codex_tmux`):
 - `driver.model_providers`: provider config map; if an entry declares `env_key`, EvE fails fast when that environment variable is missing.
 - `driver.token_pricing`: per-driver pricing metadata override. Prefer shared pricing in `configs/pricing.yaml` unless a run needs a local override.
 
-Tmux-only Codex fields (`codex_tmux`):
+Tmux-only fields (`codex_tmux`):
 
 - `driver.approval_policy`: approval policy passed to the interactive backend.
 - `driver.sandbox_mode`: sandbox mode passed to the interactive backend.
@@ -122,14 +122,6 @@ Tmux-only Codex fields (`codex_tmux`):
 - `driver.completion_filename`: internal tmux completion marker filename.
 - `driver.instruction_filename`: internal tmux instruction filename.
 
-Claude-style backend fields (`claude_code`, `claude_code_tmux`) are backend-specific and not part of the public presets:
-
-- `driver.effort_level`: native reasoning-effort spelling for these backends.
-- `driver.setting_sources`: allowed settings sources; defaults to project/local.
-- `driver.web_search`: `disabled` removes web tools for these backends.
-- `driver.dangerously_skip_permissions`: applies to `claude_code_tmux`; the non-tmux `claude_code` builder bypasses permissions internally.
-- Provider-policy fields such as `provider_base_url`, `api_key_env`, `policy_profile`, `allow_python_bash`, `allow_network`, `allow_subprocess`, and `allowed_env_vars` belong to legacy/provider-specific configs. Do not use them in public presets without a dedicated design task.
-
 ## Implementation References
 
 This skill is grounded in the current runtime surfaces:
@@ -137,4 +129,4 @@ This skill is grounded in the current runtime surfaces:
 - `src/scaling_evolve/algorithms/eve/runtime/driver.py` for backend selection, role overrides, tmux pool creation, sandbox/web-search normalization, provider environment resolution, and pricing config loading.
 - `src/scaling_evolve/providers/agent/drivers/codex_exec.py` for non-interactive Codex fields.
 - `src/scaling_evolve/providers/agent/drivers/codex_tmux.py` for interactive Codex/tmux fields.
-- `src/scaling_evolve/providers/agent/drivers/claude_code_tmux.py` and `src/scaling_evolve/providers/agent/config.py` for Claude-style backend fields.
+- `src/scaling_evolve/providers/agent/config.py` for persistent session provider config validation.

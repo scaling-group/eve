@@ -3,12 +3,9 @@
 from __future__ import annotations
 
 import json
-import subprocess
 import threading
 import time
 from pathlib import Path
-
-import pytest
 
 from scaling_evolve.core.engine import RuntimeStateRef
 from scaling_evolve.core.enums import ArtifactKind
@@ -27,20 +24,7 @@ from scaling_evolve.providers.agent.drivers._metadata import TokenPricing, resol
 from scaling_evolve.providers.agent.drivers.base import (
     SessionDriverCapabilities,
     SessionRollout,
-    SessionSeed,
 )
-from scaling_evolve.providers.agent.drivers.claude_code import ClaudeCodeSessionDriver
-from scaling_evolve.providers.agent.drivers.factory import build_claude_code_session_driver
-
-REPO_ROOT = Path(__file__).resolve().parents[1]
-STREAM_JSON_PROBE_ROOT = REPO_ROOT / "tests" / "fixtures" / "stream_json_probes"
-_PRICING_TABLE = {
-    "sonnet": TokenPricing(
-        input_per_million=3.0,
-        output_per_million=15.0,
-        cache_read_per_million=0.3,
-    ),
-}
 
 
 class _SessionSlotDriver:
@@ -151,8 +135,7 @@ def test_session_backend_uses_query_context_and_installs_sandbox(
         AgentProviderConfig.model_validate(
             {
                 "kind": "agent_fork",
-                "driver": "claude_code",
-                "provider": "openrouter",
+                "driver": "codex_exec",
                 "preferred_workspace_strategy": "artifact_only",
             }
         ),
@@ -268,7 +251,6 @@ def test_session_backend_uses_query_context_and_installs_sandbox(
     assert not (workspace_root / "reference_programs").exists()
     assert "./.budget_status.json" not in session_instruction
     assert "[Budget]" not in session_instruction
-    assert (workspace_root / ".claude" / "settings.json").exists()
     assert (workspace_root / ".hooks" / "rollout_prompts.json").exists()
     assert (workspace_root / ".sandbox_config.json").exists()
     assert (workspace_root / ".budget_status.json").exists()
@@ -277,9 +259,6 @@ def test_session_backend_uses_query_context_and_installs_sandbox(
     sandbox_payload = json.loads(
         (workspace_root / ".sandbox_config.json").read_text(encoding="utf-8")
     )
-    settings_payload = json.loads(
-        (workspace_root / ".claude" / "settings.json").read_text(encoding="utf-8")
-    )
     assert sandbox_payload["query_context"]["run_id"] == "run-1"
     assert sandbox_payload["query_context"]["parent_node_id"] == "node-0000"
     assert Path(sandbox_payload["query_context"]["sqlite_path"]).is_absolute()
@@ -287,16 +266,6 @@ def test_session_backend_uses_query_context_and_installs_sandbox(
     prompt_payload = json.loads(
         (workspace_root / ".hooks" / "rollout_prompts.json").read_text(encoding="utf-8")
     )
-    pre_tool_use = settings_payload["hooks"]["PreToolUse"]
-    assert pre_tool_use[0]["matcher"] == "Bash|Read|Edit|Write|MultiEdit|Glob|Grep"
-    assert pre_tool_use[0]["hooks"][0]["type"] == "command"
-    assert (
-        "scaling_evolve.providers.agent.hooks.workspace_guard"
-        in pre_tool_use[0]["hooks"][0]["command"]
-    )
-    assert settings_payload["hooks"]["SessionStart"][0]["hooks"][0]["type"] == "command"
-    assert settings_payload["hooks"]["UserPromptSubmit"][0]["hooks"][0]["type"] == "command"
-    assert settings_payload["hooks"]["PostToolUse"][0]["hooks"][0]["type"] == "command"
     assert prompt_payload["version"] == 2
     assert prompt_payload["prompts"] == [
         {
@@ -328,8 +297,7 @@ def test_session_backend_native_fork_instruction_warns_about_workspace_change(
         AgentProviderConfig.model_validate(
             {
                 "kind": "agent_fork",
-                "driver": "claude_code",
-                "provider": "openrouter",
+                "driver": "codex_exec",
             }
         ),
         driver,
@@ -545,8 +513,7 @@ def test_session_backend_writes_empty_rollout_prompts_when_budget_prompt_disable
         AgentProviderConfig.model_validate(
             {
                 "kind": "agent_fork",
-                "driver": "claude_code",
-                "provider": "openrouter",
+                "driver": "codex_exec",
                 "rollout_max_turns": 12,
                 "budget_prompt": False,
             }
@@ -617,8 +584,7 @@ def test_session_backend_native_fork_instruction_uses_score_feedback_for_scaling
         AgentProviderConfig.model_validate(
             {
                 "kind": "agent_fork",
-                "driver": "claude_code",
-                "provider": "openrouter",
+                "driver": "codex_exec",
             }
         ),
         driver,
@@ -702,8 +668,7 @@ def test_render_iteration_instruction_uses_spawn_specific_score_feedback() -> No
         AgentProviderConfig.model_validate(
             {
                 "kind": "agent_fork",
-                "driver": "claude_code",
-                "provider": "openrouter",
+                "driver": "codex_exec",
             }
         ),
         _SessionSlotDriver(),
@@ -732,96 +697,6 @@ def test_render_iteration_instruction_uses_spawn_specific_score_feedback() -> No
     backend.close()
 
 
-def test_claude_code_driver_appends_system_prompt_to_all_commands() -> None:
-    driver = ClaudeCodeSessionDriver(
-        executable="claude",
-        system_prompt_append="# Task\nAlways follow the shared system rules.",
-    )
-
-    spawn_command = driver._spawn_command(  # noqa: SLF001
-        type(
-            "Seed",
-            (),
-            {
-                "instruction": "Continue.",
-                "workspace": None,
-                "working_directory": ".",
-            },
-        )()
-    )
-    resume_command = driver._resume_command(  # noqa: SLF001
-        RuntimeStateRef(
-            state_id="runtime:parent",
-            provider_kind="agent_fork",
-            session_id="session:parent",
-        ),
-        "Continue.",
-    )
-
-    assert "--append-system-prompt" in spawn_command
-    assert "# Task\nAlways follow the shared system rules." in spawn_command
-    assert "--append-system-prompt" in resume_command
-    assert "# Task\nAlways follow the shared system rules." in resume_command
-
-
-def test_claude_code_driver_sets_effort_level_env() -> None:
-    driver = ClaudeCodeSessionDriver(
-        executable="claude",
-        model="sonnet",
-        max_thinking_tokens=0,
-        effort_level="low",
-    )
-
-    env = driver._provider_env("/tmp/workspace")  # noqa: SLF001
-
-    assert env is not None
-    assert env["ANTHROPIC_MODEL"] == "sonnet"
-    assert env["CLAUDE_CODE_EFFORT_LEVEL"] == "low"
-    assert env["MAX_THINKING_TOKENS"] == "0"
-
-
-def test_claude_code_driver_includes_hook_events_flag_when_supported(monkeypatch) -> None:
-    monkeypatch.setattr(
-        ClaudeCodeSessionDriver,
-        "_supports_include_hook_events",
-        staticmethod(lambda executable: True),
-    )
-
-    driver = ClaudeCodeSessionDriver(executable="claude")
-
-    assert "--include-hook-events" in driver._base_flags()  # noqa: SLF001
-
-
-def test_claude_code_driver_omits_hook_events_flag_when_unsupported(monkeypatch) -> None:
-    monkeypatch.setattr(
-        ClaudeCodeSessionDriver,
-        "_supports_include_hook_events",
-        staticmethod(lambda executable: False),
-    )
-
-    driver = ClaudeCodeSessionDriver(executable="claude")
-
-    assert "--include-hook-events" not in driver._base_flags()  # noqa: SLF001
-
-
-def test_claude_code_driver_injects_runtime_bin_and_adaptive_thinking_toggle(
-    tmp_path: Path,
-) -> None:
-    runtime_bin = tmp_path / ".agent-runtime" / "bin"
-    runtime_bin.mkdir(parents=True)
-    driver = ClaudeCodeSessionDriver(
-        executable="claude",
-        model="sonnet",
-        disable_adaptive_thinking=True,
-    )
-
-    env = driver._provider_env(str(tmp_path))  # noqa: SLF001
-
-    assert env is not None
-    assert env["PATH"].startswith(f"{runtime_bin}:")
-    assert env["CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING"] == "1"
-
-
 def test_agent_provider_prefers_virtualenv_python_for_workspace_runtime(
     tmp_path: Path,
     build_session_stack,
@@ -843,7 +718,7 @@ def test_agent_provider_prefers_virtualenv_python_for_workspace_runtime(
         AgentProviderConfig.model_validate(
             {
                 "kind": "agent_fork",
-                "driver": "claude_code",
+                "driver": "codex_exec",
                 "model": "haiku",
                 "policy_profile": "benchmark_safe",
             }
@@ -858,98 +733,9 @@ def test_agent_provider_prefers_virtualenv_python_for_workspace_runtime(
     assert runtime_python == expected_python.resolve(strict=False)
 
 
-def test_claude_code_driver_extracts_openrouter_cache_fallback_fields() -> None:
-    driver = ClaudeCodeSessionDriver(
-        executable="claude",
-        model="sonnet",
-        pricing_table=_PRICING_TABLE,
-    )
-
-    usage = driver._extract_usage(  # noqa: SLF001
-        {
-            "duration_ms": 1234,
-            "num_turns": 3,
-            "usage": {
-                "input_tokens": 100,
-                "output_tokens": 25,
-                "cached_tokens": 40,
-                "cache_write_tokens": 12,
-            },
-        }
-    )
-
-    assert usage.input_tokens == 100
-    assert usage.output_tokens == 25
-    assert usage.cache_read_tokens == 40
-    assert usage.cache_creation_tokens == 12
-    assert usage.agent_turns == 3
-    assert usage.model_cost_usd == pytest.approx(0.000687)
-
-
-def test_claude_code_driver_prefers_transcript_turn_count_when_cli_num_turns_overcounts(
-    tmp_path: Path,
-) -> None:
-    transcript_path = tmp_path / "session.jsonl"
-    transcript_path.write_text(
-        "\n".join(
-            [
-                json.dumps(
-                    {
-                        "type": "assistant",
-                        "session_id": "session:child",
-                        "message": {
-                            "id": f"msg-{index}",
-                            "model": "sonnet",
-                            "content": [{"type": "text", "text": f"turn {index}"}],
-                        },
-                    }
-                )
-                for index in range(12)
-            ]
-        )
-        + "\n",
-        encoding="utf-8",
-    )
-    driver = ClaudeCodeSessionDriver(executable="claude", model="sonnet")
-    result = {
-        "type": "result",
-        "subtype": "error_max_turns",
-        "duration_ms": 1234,
-        "num_turns": 13,
-        "usage": {
-            "input_tokens": 100,
-            "output_tokens": 25,
-            "cached_tokens": 40,
-            "cache_write_tokens": 12,
-        },
-    }
-
-    resolved_num_turns = driver._resolved_num_turns(  # noqa: SLF001
-        result,
-        transcript_path=str(transcript_path),
-        session_id="session:child",
-    )
-    usage = driver._extract_usage(result, num_turns=resolved_num_turns)  # noqa: SLF001
-    metadata = driver._execution_metadata(  # noqa: SLF001
-        command=["claude", "-p", "Continue."],
-        cwd=str(tmp_path),
-        completed=subprocess.CompletedProcess(["claude"], 1, stdout="", stderr=""),
-        result_line=result,
-        num_turns=resolved_num_turns,
-    )
-
-    assert resolved_num_turns == 12
-    assert usage.agent_turns == 12
-    assert metadata["driver_execution"]["num_turns"] == 12
-    assert (
-        driver._summary_from_result(result, num_turns=resolved_num_turns)  # noqa: SLF001
-        == "Claude Code reached rollout_max_turns after 12 turns."
-    )
-
-
 def test_resolve_token_pricing_matches_family_name_by_prefix() -> None:
     pricing = resolve_token_pricing(
-        "claude-haiku-4-5-20251001",
+        "haiku-4-5-20251001",
         None,
         {
             "haiku": TokenPricing(
@@ -964,264 +750,6 @@ def test_resolve_token_pricing_matches_family_name_by_prefix() -> None:
     assert pricing.input_per_million == 1.0
 
 
-def test_claude_code_driver_factory_passes_timeout_seconds(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
-
-    driver = build_claude_code_session_driver(
-        AgentProviderConfig.model_validate(
-            {
-                "kind": "agent_fork",
-                "driver": "claude_code",
-                "provider": "openrouter",
-                "timeout_seconds": 123.0,
-            }
-        )
-    )
-
-    assert driver.timeout_seconds == 123.0
-
-
-def test_claude_code_driver_default_runner_uses_timeout(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    driver = ClaudeCodeSessionDriver(executable="claude", timeout_seconds=123.0)
-    observed: dict[str, object] = {}
-
-    def fake_run(*args, **kwargs):
-        observed["timeout"] = kwargs.get("timeout")
-        return subprocess.CompletedProcess(args[0], 0, stdout="", stderr="")
-
-    monkeypatch.setattr(subprocess, "run", fake_run)
-
-    driver._default_runner(["claude", "--help"], "/tmp/workspace")  # noqa: SLF001
-
-    assert observed["timeout"] == 123.0
-
-
-def test_claude_code_driver_raises_runtime_error_on_timeout() -> None:
-    driver = ClaudeCodeSessionDriver(
-        executable="claude",
-        runner=lambda command, cwd, env: (_ for _ in ()).throw(
-            subprocess.TimeoutExpired(command, timeout=600.0)
-        ),
-    )
-
-    with pytest.raises(RuntimeError, match="Claude Code CLI timed out"):
-        driver.spawn(
-            type(
-                "Seed",
-                (),
-                {
-                    "instruction": "Continue.",
-                    "workspace": None,
-                    "working_directory": ".",
-                },
-            )()
-        )
-
-
-def test_claude_code_driver_treats_error_max_turns_as_usable_result() -> None:
-    driver = ClaudeCodeSessionDriver(executable="claude")
-
-    payload = {
-        "type": "result",
-        "subtype": "error_max_turns",
-        "is_error": True,
-        "session_id": "session:child",
-        "num_turns": 12,
-    }
-
-    assert driver._result_is_error(payload) is False  # noqa: SLF001
-
-
-def test_claude_code_driver_subscription_mode_skips_isolated_config_env() -> None:
-    driver = ClaudeCodeSessionDriver(
-        executable="claude",
-        model="sonnet",
-        isolate_config=False,
-        effort_level="low",
-    )
-
-    env = driver._provider_env("/tmp/workspace")  # noqa: SLF001
-
-    assert env is not None
-    assert "CLAUDE_CONFIG_DIR" not in env
-    assert env["CLAUDE_CODE_EFFORT_LEVEL"] == "low"
-
-
-def test_claude_code_driver_emits_setting_sources_flag() -> None:
-    driver = ClaudeCodeSessionDriver(
-        executable="claude",
-        model="sonnet",
-        isolate_config=False,
-        setting_sources=("project", "local"),
-    )
-
-    command = driver._spawn_command(  # noqa: SLF001
-        type(
-            "Seed",
-            (),
-            {
-                "instruction": "Continue.",
-                "workspace": None,
-                "working_directory": ".",
-            },
-        )()
-    )
-
-    assert "--setting-sources" in command
-    assert "project,local" in command
-
-
-def test_claude_code_driver_emits_alignment_flags() -> None:
-    driver = ClaudeCodeSessionDriver(executable="claude", model="sonnet")
-
-    command = driver._spawn_command(  # noqa: SLF001
-        type(
-            "Seed",
-            (),
-            {
-                "instruction": "Continue.",
-                "workspace": None,
-                "working_directory": ".",
-            },
-        )()
-    )
-
-    assert "--dangerously-skip-permissions" in command
-    assert "--setting-sources" in command
-    assert "project,local" in command
-    assert "--permission-mode" not in command
-    assert "--bare" not in command
-    assert "--allowedTools" not in command
-    assert "--tools" not in command
-
-
-def test_claude_code_driver_emits_disallowed_tools_flag() -> None:
-    driver = ClaudeCodeSessionDriver(
-        executable="claude",
-        disallowed_tools=("WebSearch", "WebFetch"),
-    )
-
-    command = driver._spawn_command(  # noqa: SLF001
-        type(
-            "Seed",
-            (),
-            {
-                "instruction": "Continue.",
-                "workspace": None,
-                "working_directory": ".",
-            },
-        )()
-    )
-
-    assert "--disallowedTools" in command
-    assert "WebSearch,WebFetch" in command
-
-
-@pytest.mark.skipif(
-    not STREAM_JSON_PROBE_ROOT.exists(),
-    reason="stream-json probe fixtures not present (gitignored)",
-)
-def test_claude_code_driver_parses_stream_json_probe_fixture() -> None:
-    driver = ClaudeCodeSessionDriver(executable="claude")
-    stdout = (STREAM_JSON_PROBE_ROOT / "p1_basic_agent_loop.jsonl").read_text(encoding="utf-8")
-
-    result = driver._maybe_extract_result_line(stdout)  # noqa: SLF001
-
-    assert result is not None
-    assert result["session_id"] == "b1fe867f-7aa9-4b4a-bf47-665af1f708fe"
-    assert driver._result_is_error(result) is False  # noqa: SLF001
-    assert driver._summary_from_result(result).startswith("Fixed!")  # noqa: SLF001
-    usage = driver._extract_usage(result)  # noqa: SLF001
-    assert usage.input_tokens > 0
-    assert usage.output_tokens > 0
-    assert usage.model_cost_usd > 0
-    changed_paths = driver._extract_changed_paths_from_stream_json(stdout)  # noqa: SLF001
-    assert any(path.endswith("/buggy.py") for path in changed_paths)
-
-
-@pytest.mark.skipif(
-    not STREAM_JSON_PROBE_ROOT.exists(),
-    reason="stream-json probe fixtures not present (gitignored)",
-)
-def test_claude_code_driver_resume_probe_uses_result_session_id() -> None:
-    driver = ClaudeCodeSessionDriver(executable="claude")
-    spawn_stdout = (STREAM_JSON_PROBE_ROOT / "p3_resume_spawn.jsonl").read_text(encoding="utf-8")
-    resume_stdout = (STREAM_JSON_PROBE_ROOT / "p3_resume_followup.jsonl").read_text(
-        encoding="utf-8"
-    )
-
-    spawn_result = driver._maybe_extract_result_line(spawn_stdout)  # noqa: SLF001
-    resume_result = driver._maybe_extract_result_line(resume_stdout)  # noqa: SLF001
-
-    assert spawn_result is not None
-    assert resume_result is not None
-    assert spawn_result["session_id"] == "bb8e7e11-6b5a-470a-88b5-cafcda373115"
-    assert resume_result["session_id"] == spawn_result["session_id"]
-
-
-def test_claude_code_driver_snapshots_transcript_into_workspace(tmp_path: Path) -> None:
-    driver = ClaudeCodeSessionDriver(
-        executable="claude",
-        model="sonnet",
-        effort_level="low",
-    )
-
-    def fake_runner(command, cwd, env):  # noqa: ANN001
-        _ = command
-        assert env is not None
-        live_path = driver._provider_session_path(cwd=cwd, session_id="session:child")  # noqa: SLF001
-        live_path.parent.mkdir(parents=True, exist_ok=True)
-        live_path.write_text(
-            (
-                '{"type":"user","sessionId":"session:child",'
-                '"message":{"role":"user","content":"Do work."}}\n'
-            ),
-            encoding="utf-8",
-        )
-        return subprocess.CompletedProcess(
-            args=list(command),
-            returncode=0,
-            stdout=json.dumps(
-                {
-                    "type": "result",
-                    "subtype": "success",
-                    "session_id": "session:child",
-                    "summary": "done",
-                    "num_turns": 1,
-                    "usage": {"input_tokens": 5, "output_tokens": 2},
-                }
-            )
-            + "\n",
-            stderr="",
-        )
-
-    driver.runner = fake_runner
-
-    rollout = driver.spawn(
-        SessionSeed(
-            instruction="Do work.",
-            working_directory=str(tmp_path),
-        )
-    )
-
-    metadata = rollout.state.metadata
-    snapshot_path = Path(str(metadata["provider_transcript_path"]))
-    live_path = Path(str(metadata["provider_transcript_live_path"]))
-    stdout_live_path = Path(str(metadata["driver_stdout_live_path"]))
-    assert live_path.exists()
-    assert snapshot_path.exists()
-    assert stdout_live_path.exists()
-    assert snapshot_path != live_path
-    assert snapshot_path.read_text(encoding="utf-8") == live_path.read_text(encoding="utf-8")
-    assert stdout_live_path.read_text(encoding="utf-8") == str(metadata["driver_stdout"])
-    assert Path(str(metadata["attempt_root"])) == tmp_path / ".claude-driver-transcripts"
-    assert metadata["driver_execution"]["effort_level"] == "low"
-
-
 def test_session_backend_prefers_rollout_summary_for_artifact_store_portable_state(
     tmp_path: Path,
     build_session_stack,
@@ -1233,8 +761,7 @@ def test_session_backend_prefers_rollout_summary_for_artifact_store_portable_sta
         AgentProviderConfig.model_validate(
             {
                 "kind": "agent_fork",
-                "driver": "claude_code",
-                "provider": "openrouter",
+                "driver": "codex_exec",
             }
         ),
         driver,
@@ -1277,8 +804,7 @@ def test_session_backend_native_fork_rewrites_query_context_after_workspace_copy
         AgentProviderConfig.model_validate(
             {
                 "kind": "agent_fork",
-                "driver": "claude_code",
-                "provider": "openrouter",
+                "driver": "codex_exec",
             }
         ),
         driver,
@@ -1386,8 +912,7 @@ def test_session_backend_native_fork_syncs_stable_session_slot_back_to_child_wor
         AgentProviderConfig.model_validate(
             {
                 "kind": "agent_fork",
-                "driver": "claude_code",
-                "provider": "openrouter",
+                "driver": "codex_exec",
             }
         ),
         driver,
@@ -1470,8 +995,7 @@ def test_session_backend_serializes_concurrent_reuse_of_stable_session_slot(
         AgentProviderConfig.model_validate(
             {
                 "kind": "agent_fork",
-                "driver": "claude_code",
-                "provider": "openrouter",
+                "driver": "codex_exec",
             }
         ),
         driver,
@@ -1568,8 +1092,7 @@ def test_session_backend_keeps_different_stable_session_slots_parallel(
         AgentProviderConfig.model_validate(
             {
                 "kind": "agent_fork",
-                "driver": "claude_code",
-                "provider": "openrouter",
+                "driver": "codex_exec",
             }
         ),
         driver,

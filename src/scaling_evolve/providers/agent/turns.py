@@ -12,7 +12,7 @@ from typing import Any, Literal
 class TranscriptTurnState:
     """Observed turn state derived from one transcript file."""
 
-    format_name: Literal["claude", "codex_exec", "codex_tmux", "unknown"]
+    format_name: Literal["codex_exec", "codex_tmux", "unknown"]
     turn_count: int
     latest_batch_tool_ids: tuple[str, ...]
 
@@ -24,41 +24,11 @@ def inspect_transcript_turn_state(transcript_path: Path) -> TranscriptTurnState:
         return TranscriptTurnState("unknown", 0, ())
     payloads = _load_payloads(transcript_path)
     format_name = _detect_format(payloads)
-    if format_name == "claude":
-        return _inspect_claude_payloads(payloads)
     if format_name == "codex_exec":
         return _inspect_codex_exec_payloads(payloads)
     if format_name == "codex_tmux":
         return _inspect_codex_tmux_payloads(payloads)
     return TranscriptTurnState("unknown", 0, ())
-
-
-def _inspect_claude_payloads(payloads: list[dict[str, Any]]) -> TranscriptTurnState:
-    assistant_ids: set[str] = set()
-    latest_batch: tuple[str, ...] = ()
-    for index, payload in enumerate(payloads):
-        if _string(payload.get("type")) != "assistant":
-            continue
-        message = _mapping(payload.get("message"))
-        batch_ids = tuple(
-            tool_id
-            for tool_id in (
-                _string(block.get("id"))
-                for block in _content_blocks(message.get("content"))
-                if _string(block.get("type")) == "tool_use"
-            )
-            if tool_id is not None
-        )
-        if not batch_ids:
-            continue
-        assistant_id = (
-            _string(message.get("id"))
-            or _string(payload.get("requestId"))
-            or f"assistant-line:{index}"
-        )
-        assistant_ids.add(assistant_id)
-        latest_batch = batch_ids
-    return TranscriptTurnState("claude", len(assistant_ids), latest_batch)
 
 
 def _inspect_codex_exec_payloads(payloads: list[dict[str, Any]]) -> TranscriptTurnState:
@@ -116,10 +86,8 @@ def _inspect_codex_tmux_payloads(payloads: list[dict[str, Any]]) -> TranscriptTu
 
 def _detect_format(
     payloads: list[dict[str, Any]],
-) -> Literal["claude", "codex_exec", "codex_tmux", "unknown"]:
+) -> Literal["codex_exec", "codex_tmux", "unknown"]:
     payload_types = {_string(payload.get("type")) for payload in payloads}
-    if "assistant" in payload_types:
-        return "claude"
     if "item.completed" in payload_types or "thread.started" in payload_types:
         return "codex_exec"
     if "event_msg" in payload_types or "response_item" in payload_types:
@@ -134,12 +102,6 @@ def _load_payloads(transcript_path: Path) -> list[dict[str, Any]]:
         if payload is not None:
             payloads.append(payload)
     return payloads
-
-
-def _content_blocks(value: object) -> list[dict[str, Any]]:
-    if not isinstance(value, list):
-        return []
-    return [block for block in value if isinstance(block, dict)]
 
 
 def _load_json_line(line: str) -> dict[str, Any] | None:

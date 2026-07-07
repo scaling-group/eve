@@ -8,15 +8,10 @@ from pathlib import Path
 
 DEFAULT_EXCLUDE_DIRS = {
     ".git",
-    ".claude-driver-config",
-    ".claude-driver-transcripts",
     ".codex-driver-home",
     ".codex-driver-transcripts",
 }
-DEFAULT_EXCLUDE_FILES = {
-    ".claude-stop-hook.log",
-    ".claude-task-stopped",
-}
+DEFAULT_EXCLUDE_FILES: set[str] = set()
 
 
 def read_workspace_tree(

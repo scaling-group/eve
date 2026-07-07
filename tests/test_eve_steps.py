@@ -412,7 +412,6 @@ def _minimal_immutable_files() -> dict[str, str]:
         )
         + "\n",
         "AGENTS.md": "# Workspace Agent Instructions\n",
-        "CLAUDE.md": "# Workspace Agent Instructions\n",
     }
 
 
@@ -420,7 +419,6 @@ def _minimal_immutable_files_with_marker(marker: str) -> dict[str, str]:
     files = _minimal_immutable_files()
     files["README.md"] = f"# {marker}\n\n{files['README.md']}"
     files["AGENTS.md"] = f"# {marker} Agent Instructions\n"
-    files["CLAUDE.md"] = f"# {marker} Agent Instructions\n"
     return files
 
 
@@ -752,7 +750,7 @@ def test_normal_worker_matches_default_materialized_assets(tmp_path: Path) -> No
         worker_config=normal_worker,
     )
 
-    for filename in ("README.md", "AGENTS.md", "CLAUDE.md"):
+    for filename in ("README.md", "AGENTS.md"):
         assert (default_workspace / filename).read_bytes() == (
             worker_workspace / filename
         ).read_bytes()
@@ -1910,18 +1908,10 @@ def test_solver_workspace_exposes_context_skills_via_root_links(tmp_path: Path) 
         encoding="utf-8"
     ) == "skill body\n"
     assert not (workspace / "skills").exists()
-    assert (workspace / ".claude" / "skills").is_symlink()
     assert (workspace / ".codex" / "skills").is_symlink()
-    assert (workspace / ".claude" / "skills" / "read-eval" / "SKILL.md").read_text(
-        encoding="utf-8"
-    ) == "skill body\n"
     assert (workspace / ".codex" / "skills" / "read-eval" / "SKILL.md").read_text(
         encoding="utf-8"
     ) == "skill body\n"
-    assert (workspace / ".claude" / "settings.local.json").exists()
-    assert ".claude-task-stopped" in (workspace / ".claude" / "settings.local.json").read_text(
-        encoding="utf-8"
-    )
 
 
 def test_readme_renders_current_score_shape(tmp_path: Path) -> None:
@@ -1988,9 +1978,6 @@ def test_solver_workspace_builder_copies_workspace_agent_instruction_files(tmp_p
     )
 
     assert (workspace / "AGENTS.md").read_text(encoding="utf-8") == (
-        "# Workspace Agent Instructions\n"
-    )
-    assert (workspace / "CLAUDE.md").read_text(encoding="utf-8") == (
         "# Workspace Agent Instructions\n"
     )
 
@@ -2307,7 +2294,7 @@ def test_task_context_tells_agent_to_use_boundary_check_during_editing(tmp_path:
     assert "Editable files:" in instruction
     assert "- `solver/candidate.py`" in instruction
     assert "invoke the predefined `check-runner`" in instruction
-    assert "sub-agent from `.claude/agents/check-runner.md`" in instruction
+    assert "agent from `.codex/agents/check-runner.toml`" in instruction
     assert "Other files inside\n`solver/` are read-only." in instruction
 
 
@@ -2557,15 +2544,10 @@ def test_solver_workspace_embeds_check_agent_from_immutable(tmp_path: Path) -> N
         solvers=[candidate],
         prefill_solver=candidate,
     )
-    claude_check = (workspace / ".claude" / "agents" / "check-runner.md").read_text(
-        encoding="utf-8"
-    )
     codex_check = tomllib.loads(
         (workspace / ".codex" / "agents" / "check-runner.toml").read_text(encoding="utf-8")
     )["developer_instructions"]
 
-    assert "python3 -m py_compile solver/candidate.py solver/evaluate.py" in claude_check
-    assert "--baseline-root" in claude_check
     assert "python3 -m py_compile solver/candidate.py solver/evaluate.py" in codex_check
     assert "--baseline-root" in codex_check
 
@@ -2573,16 +2555,6 @@ def test_solver_workspace_embeds_check_agent_from_immutable(tmp_path: Path) -> N
 def test_solver_workspace_can_use_immutable_check_agents(tmp_path: Path) -> None:
     immutable_files = _minimal_immutable_files()
     immutable_files["README.md"] += "\n{immutable_overlay_block}\n"
-    immutable_files[".claude/agents/check-runner.md"] = "\n".join(
-        [
-            "---",
-            "name: check-runner",
-            "---",
-            "",
-            "Immutable Claude check.",
-            "{{BOUNDARY_CHECK_COMMAND}}",
-        ]
-    )
     immutable_files[".codex/agents/check-runner.toml"] = "\n".join(
         [
             'name = "check-runner"',
@@ -2614,25 +2586,14 @@ def test_solver_workspace_can_use_immutable_check_agents(tmp_path: Path) -> None
         prefill_solver=candidate,
     )
 
-    claude_check = (workspace / ".claude" / "agents" / "check-runner.md").read_text(
-        encoding="utf-8"
-    )
     codex_check = tomllib.loads(
         (workspace / ".codex" / "agents" / "check-runner.toml").read_text(encoding="utf-8")
     )["developer_instructions"]
 
-    assert "Immutable Claude check." in claude_check
     assert "Immutable Codex check." in codex_check
-    assert "{{BOUNDARY_CHECK_COMMAND}}" not in claude_check
     assert "{{BOUNDARY_CHECK_COMMAND}}" not in codex_check
-    assert "--baseline-root" in claude_check
     assert "--baseline-root" in codex_check
-    assert (workspace / "guidance" / "agents" / "claude" / "check-runner.md").exists()
     assert (workspace / "guidance" / "agents" / "codex" / "check-runner.toml").exists()
-    assert "agents/claude/check-runner.md" not in builder.extract_optimizer(
-        workspace,
-        worker_config=builder.worker_configs[0],
-    )
     assert "agents/codex/check-runner.toml" not in builder.extract_optimizer(
         workspace,
         worker_config=builder.worker_configs[0],
@@ -2640,7 +2601,7 @@ def test_solver_workspace_can_use_immutable_check_agents(tmp_path: Path) -> None
 
     readme = (workspace / "README.md").read_text(encoding="utf-8")
     assert "{immutable_overlay_block}" not in readme
-    assert "`.claude/agents/check-runner.md` overlays" in readme
+    assert "`.codex/agents/check-runner.toml` overlays" in readme
 
 
 def test_solver_workspace_name_uses_underscore_timestamp_format(tmp_path: Path) -> None:
@@ -2960,7 +2921,6 @@ def test_eval_workspace_includes_solver_examples_and_renders_readme_block(
                 immutable_files={
                     "README.md": "Reference examples:\n\n{solver_examples_block}\n",
                     "AGENTS.md": "Agent examples:\n\n{solver_examples_block}\n",
-                    "CLAUDE.md": "Judge agent instructions without runtime markers.\n",
                 },
                 immutable_renderer=DefaultRenderer(),
             ),
@@ -2987,9 +2947,6 @@ def test_eval_workspace_includes_solver_examples_and_renders_readme_block(
     assert "{solver_examples_block}" not in agents_text
     assert "- `solver_examples/solver_example_1/` <- prefill" in agents_text
     assert "  prior score:\n    dimensions:" in agents_text
-    assert (eval_ws / "CLAUDE.md").read_text(
-        encoding="utf-8"
-    ) == "Judge agent instructions without runtime markers.\n"
     assert (eval_ws / "solver_examples").stat().st_mode & 0o222 == 0
 
 

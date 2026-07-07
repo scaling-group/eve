@@ -35,15 +35,9 @@ The loop runs in three phases:
 ```text
 phase_workspace_root/
 |-- AGENTS.md        <- workspace agent instructions
-|-- CLAUDE.md        <- workspace agent instructions
 |-- README.md        <- workspace-specific notes, must read.
 |-- guidance/        <- optimizer guidance files copied from the selected optimizer
-|   `-- skills/      <- optional skill tree; exposed through `.claude/skills`
-|                       and `.codex/skills`
-|-- .claude/
-|   |-- agents/
-|   |   `-- check-runner.md   <- predefined Claude check sub-agent, copied from config
-|   `-- skills -> ../guidance/skills
+|   `-- skills/      <- optional skill tree; exposed through `.codex/skills`
 |-- .codex/
 |   |-- agents/
 |   |   `-- check-runner.toml <- predefined Codex check sub-agent, copied from config
@@ -109,7 +103,7 @@ The optimizer's guidance lives in `guidance/docs/`. Start with `problem.md` for 
 
 The live score is `score = -mean_d1_d10`, where `mean_d1_d10` is the mean question-QoI error across demo counts d1..d10. Higher score is better, because lower average error is better. `mean_d1_d4` remains a short-context diagnostic: a candidate that only looks better by distorting the early-demo regime is not a convincing result. Inspect the full `d1..d10` curve before declaring a candidate promising. If the `d1..d10` curve is roughly flat at a high plateau, the model is not yet trained; the score difference between candidates at that regime is mostly noise, not signal.
 
-**MANDATORY:** Before you stop, you MUST invoke the predefined `check-runner` sub-agent from `.claude/agents/check-runner.md` or `.codex/agents/check-runner.toml`, depending on which runtime you are using. Have it execute its configured check workflow from the workspace root. Do NOT finish without running this check. If anything fails, repair the output and rerun the check until it passes.
+**MANDATORY:** Before you stop, you MUST invoke the predefined `check-runner` sub-agent from `.codex/agents/check-runner.toml`. Have it execute its configured check workflow from the workspace root. Do NOT finish without running this check. If anything fails, repair the output and rerun the check until it passes.
 
 The `check-runner` sub-agent is a gate, not a reward signal. Its contract is intentionally demanding: local syntax and boundary checks, a real remote remote cluster smoke, checkpoint confirmation, and a final settle pass. Do not let smoke-friendliness silently rank otherwise viable research mutations; if the only reason to choose the simpler path is that it looks easier to get through the smoke cycle, you are optimizing for the wrong thing. A mutation that fails smoke once is usually repairable, but an ambitious mutation you never try because its validation path looks riskier is permanently lost research signal.
 

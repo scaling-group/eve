@@ -114,13 +114,6 @@ def _emit_rollout_context(hook_input: dict[str, object]) -> str | None:
     )
 
 
-def _is_claude_background_task_output(path: Path) -> bool:
-    text = path.as_posix()
-    if "/tasks/" not in text:
-        return False
-    return "/tmp/claude-" in text or "/private/tmp/claude-" in text
-
-
 def _load_rollout_prompt_payload(cwd: Path) -> dict[str, object] | None:
     config_path = _find_rollout_prompt_config(cwd)
     if config_path is None:
@@ -281,8 +274,6 @@ def _check_bash_command(
         resolved = _resolve(raw_path, cwd)
         if _is_evaluator_path(resolved, evaluator_dirs):
             _block(f"Bash evaluator source is off-limits: {resolved}")
-        if _is_claude_background_task_output(resolved):
-            continue
         if _is_under(resolved, own_workspace):
             continue
         if _is_under(resolved, workspace_root):
@@ -325,8 +316,6 @@ def main() -> None:
             resolved = _resolve(raw_path, cwd)
             if _is_evaluator_path(resolved, evaluator_dirs):
                 _block(f"{tool_name} evaluator source is off-limits: {resolved}")
-            if _is_claude_background_task_output(resolved):
-                raise SystemExit(0)
             workspace_root = own_workspace.parent
             if tool_name in {"Edit", "Write", "MultiEdit"} and not _is_under(
                 resolved, own_workspace

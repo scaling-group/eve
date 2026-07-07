@@ -55,8 +55,6 @@ def test_public_docs_do_not_include_core_only_workflows() -> None:
 def test_root_skill_symlinks_match_public_agent_surface() -> None:
     assert Path(".agents/skills").is_symlink()
     assert Path(".agents/skills").readlink() == Path("../docs/skills")
-    assert Path(".claude/skills").is_symlink()
-    assert Path(".claude/skills").readlink() == Path("../docs/skills")
     assert not Path(".agent").exists()
     assert not Path(".codex/skills").exists()
 
@@ -69,34 +67,6 @@ def test_public_wandb_configs_do_not_set_group_defaults() -> None:
     assert wandb_cfg["project"] == "eve"
     assert wandb_cfg["entity"] is None
     assert "wandb" not in circle_cfg.get("logger", {})
-
-
-def test_eve_claude_check_agents_have_valid_yaml_frontmatter() -> None:
-    agent_paths = (
-        (
-            Path("configs/eve/optimizer/circle_packing/immutable/.claude/agents/check-runner.md"),
-            "check-runner",
-        ),
-        (
-            Path("configs/eve/optimizer/icon/immutable/.claude/agents/check-runner.md"),
-            "check-runner",
-        ),
-        (
-            Path(
-                "configs/eve/evaluation/circle_packing/immutable_assess/"
-                ".claude/agents/score-check.md"
-            ),
-            "score-check",
-        ),
-    )
-
-    for agent_path, expected_name in agent_paths:
-        content = agent_path.read_text(encoding="utf-8")
-        _leading, _separator, remainder = content.partition("---\n")
-        frontmatter_block, _separator, _body = remainder.partition("---\n")
-        payload = yaml.safe_load(frontmatter_block)
-        assert payload["name"] == expected_name
-        assert payload["description"]
 
 
 def test_eve_codex_check_agents_have_valid_toml() -> None:

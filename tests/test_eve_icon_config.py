@@ -62,7 +62,6 @@ def test_icon_config_points_at_existing_ported_assets() -> None:
     worker = opt_cfg["optimizer"]["workers"]["items"][0]
     immutable_root = Path(worker["immutable"])
     assert immutable_root.is_dir()
-    assert (immutable_root / ".claude/agents/check-runner.md").is_file()
     assert (immutable_root / ".codex/agents/check-runner.toml").is_file()
     assert (immutable_root / "check_runner/check.sh").is_file()
     assert Path(worker["prompt"]).is_dir()
