@@ -83,6 +83,113 @@ def test_inspect_transcript_turn_state_for_codex_tmux_payloads(tmp_path: Path) -
     assert state.latest_batch_tool_ids == ("call-1", "call-2")
 
 
+def test_inspect_transcript_turn_state_prefers_codex_exec_for_mixed_rows(
+    tmp_path: Path,
+) -> None:
+    transcript_path = tmp_path / "mixed.jsonl"
+    transcript_path.write_text(
+        "\n".join(
+            [
+                '{"type":"response_item","payload":{"type":"function_call","call_id":"tmux-call"}}',
+                '{"type":"item.completed","item":{"type":"agent_message","text":"Inspecting"}}',
+                '{"type":"item.completed","item":{"type":"function_call","call_id":"exec-call"}}',
+                '{"type":"turn.completed"}',
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    state = inspect_transcript_turn_state(transcript_path)
+
+    assert state.format_name == "codex_exec"
+    assert state.turn_count == 1
+    assert state.latest_batch_tool_ids == ("exec-call",)
+
+
+@pytest.mark.parametrize(
+    ("rows", "format_name"),
+    [
+        pytest.param(
+            [
+                '{"type":"item.completed","item":{"type":"function_call","call_id":"call-1"}}',
+                "{invalid-json",
+                "42",
+                '{"type":"item.completed","item":{"type":"function_call","call_id":"call-2"}}',
+                '{"type":"turn.completed"}',
+            ],
+            "codex_exec",
+            id="codex-exec",
+        ),
+        pytest.param(
+            [
+                '{"type":"response_item","payload":{"type":"function_call","call_id":"call-1"}}',
+                "{invalid-json",
+                "42",
+                '{"type":"response_item","payload":{"type":"function_call","call_id":"call-2"}}',
+                '{"type":"response_item","payload":{"type":"function_call_output",'
+                '"call_id":"call-1"}}',
+            ],
+            "codex_tmux",
+            id="codex-tmux",
+        ),
+    ],
+)
+def test_inspect_transcript_turn_state_ignores_unparseable_rows_inside_tool_batch(
+    tmp_path: Path,
+    rows: list[str],
+    format_name: str,
+) -> None:
+    transcript_path = tmp_path / f"{format_name}.jsonl"
+    transcript_path.write_text("\n".join(rows) + "\n", encoding="utf-8")
+
+    state = inspect_transcript_turn_state(transcript_path)
+
+    assert state.format_name == format_name
+    assert state.latest_batch_tool_ids == ("call-1", "call-2")
+
+
+@pytest.mark.parametrize(
+    ("rows", "format_name"),
+    [
+        pytest.param(
+            [
+                '{"type":"item.completed","item":{"type":"function_call","call_id":"stale-call"}}',
+                '{"type":"item.completed","item":"malformed"}',
+                '{"type":"item.completed","item":{"type":"function_call","call_id":"latest-call"}}',
+                '{"type":"turn.completed"}',
+            ],
+            "codex_exec",
+            id="codex-exec",
+        ),
+        pytest.param(
+            [
+                '{"type":"response_item","payload":{"type":"function_call",'
+                '"call_id":"stale-call"}}',
+                '{"type":"response_item","payload":"malformed"}',
+                '{"type":"response_item","payload":{"type":"function_call",'
+                '"call_id":"latest-call"}}',
+                '{"type":"event_msg","payload":{"type":"agent_message"}}',
+            ],
+            "codex_tmux",
+            id="codex-tmux",
+        ),
+    ],
+)
+def test_inspect_transcript_turn_state_resets_batch_on_malformed_nested_payload(
+    tmp_path: Path,
+    rows: list[str],
+    format_name: str,
+) -> None:
+    transcript_path = tmp_path / f"{format_name}.jsonl"
+    transcript_path.write_text("\n".join(rows) + "\n", encoding="utf-8")
+
+    state = inspect_transcript_turn_state(transcript_path)
+
+    assert state.format_name == format_name
+    assert state.latest_batch_tool_ids == ("latest-call",)
+
+
 def test_budget_prompt_user_renders_announcement_from_context() -> None:
     prompt = _budget_prompt()
     text = prompt.user(PromptContext(workspace=Path("."), rollout_max_turns=10))
