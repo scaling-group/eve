@@ -81,6 +81,7 @@ def _loop_config(run_root: Path, *, max_iterations: int, enable_resume: bool = T
             "label": "",
             "max_iterations": max_iterations,
             "n_workers_phase2": 1,
+            "n_parallel_phase2": 1,
             "n_solver_examples_phase2": 1,
             "n_optimizer_examples_phase2": 1,
             "exclude_all_working_optimizers_from_examples": False,
@@ -239,6 +240,7 @@ def _factory_reload_config(
                 "optimizer_db_path": str(root / "run" / "optimizer_lineage.db"),
                 "max_iterations": 1,
                 "n_workers_phase2": 1,
+                "n_parallel_phase2": 1,
                 "n_solver_examples_phase2": 1,
                 "n_optimizer_examples_phase2": 1,
                 "exclude_all_working_optimizers_from_examples": False,
@@ -277,7 +279,12 @@ def _factory_reload_config(
                     ),
                 },
                 "workers": {
-                    "selection": "random",
+                    "selection": {
+                        "_target_": (
+                            "scaling_evolve.algorithms.eve.workspace.worker_selection."
+                            "RandomWorkerSelector"
+                        ),
+                    },
                     "items": [
                         {
                             "name": "normal",

@@ -77,6 +77,7 @@ class Eve:
                 solver_pop=self.solver_pop,
                 optimizer_pop=self.optimizer_pop,
                 n_workers_phase2=self.config.n_workers_phase2,
+                n_parallel_phase2=self.config.n_parallel_phase2,
                 n_solver_examples_phase2=self.config.n_solver_examples_phase2,
                 n_optimizer_examples_phase2=self.config.n_optimizer_examples_phase2,
                 exclude_all_working_optimizers_from_examples=(

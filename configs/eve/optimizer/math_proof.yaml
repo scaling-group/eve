@@ -4,7 +4,8 @@
 optimizer:
   initial_guidance: configs/eve/optimizer/math_proof/initial_guidance
   workers:
-    selection: random
+    selection:
+      _target_: scaling_evolve.algorithms.eve.workspace.worker_selection.RandomWorkerSelector
     items:
       - name: normal
         weight: 1.0
@@ -26,4 +27,4 @@ optimizer:
 driver:
   overrides:
     solver:
-      system_prompt_file: configs/eve/optimizer/math_proof/prompt/CODEX_SYSTEM_PROMPT.md
+      system_prompt_file: configs/eve/optimizer/math_proof/prompt/SYSTEM_PROMPT.md

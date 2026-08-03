@@ -7,6 +7,7 @@ from typing import Any
 
 from scaling_evolve.providers.agent.drivers.base import SessionRollout
 from scaling_evolve.providers.agent.session_log.codex_parser import parse_codex_session
+from scaling_evolve.providers.agent.session_log.opencode_parser import parse_opencode_session
 from scaling_evolve.providers.agent.session_log.schema import render_session_markdown
 
 
@@ -45,6 +46,11 @@ def _dispatch_parser(
         if parsed is not None and driver_name is not None:
             parsed.provider = driver_name
         return parsed
+    if driver_name == "opencode":
+        return parse_opencode_session(
+            transcript_path,
+            session_id=rollout.state.session_id,
+        )
     return None
 
 

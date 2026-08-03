@@ -7,6 +7,7 @@ from omegaconf import OmegaConf
 from scaling_evolve.algorithms.eve.problem.repo import RepoTaskProblem
 from scaling_evolve.algorithms.eve.workspace.file_tree import expose_guidance_agents
 from scaling_evolve.algorithms.eve.workspace.solver_workspace import SolverWorkspaceBuilder
+from scaling_evolve.algorithms.eve.workspace.worker_selection import RandomWorkerSelector
 
 
 def _make_problem(tmp_path: Path) -> RepoTaskProblem:
@@ -84,6 +85,7 @@ def test_solver_workspace_build_exposes_guidance_agents(tmp_path: Path) -> None:
         problem=problem,
         config=_make_config(tmp_path),
         immutable_files={},
+        worker_selector=RandomWorkerSelector(),
     )
 
     workspace, _ = builder.build(

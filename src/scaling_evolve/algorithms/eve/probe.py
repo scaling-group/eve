@@ -69,11 +69,11 @@ def main(argv: list[str] | None = None) -> int:
     run_id = f"run-{ts}-probe-{args.agent}-{uid}"
     run_root = repo_root / ".runs" / "eve" / "probe" / run_id
     run_root.mkdir(parents=True, exist_ok=True)
-    workers = int(raw.get("loop", {}).get("n_workers_phase2", 1) or 1)
+    worker_slots = raw["loop"]["n_parallel_phase2"]
     drivers = build_role_drivers(
         raw.get("driver", {}),
         run_root=run_root,
-        workers=workers,
+        worker_slots=worker_slots,
     )
     try:
         if args.agent == "solver":

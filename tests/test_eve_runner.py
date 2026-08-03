@@ -14,6 +14,7 @@ from scaling_evolve.algorithms.eve.workflow.evaluation import (
 
 _LOOP_CFG = {
     "n_workers_phase2": 1,
+    "n_parallel_phase2": 1,
 }
 
 

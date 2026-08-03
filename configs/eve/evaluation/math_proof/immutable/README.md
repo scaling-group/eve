@@ -22,7 +22,7 @@ Workspace layout:
 |       |-- logs/         # Logs for that solver example.
 |       |   `-- evaluate/ # Evaluation logs for that solver example.
 |       `-- score.yaml    # Evaluation score for that solver example.
-|-- .codex/agents/        # Evaluation helper agents.
+|-- .codex/agents/        # Local evaluation helper-agent definitions.
 `-- ...
 ```
 
@@ -75,10 +75,11 @@ score. Launch all scoring auditor subagents in parallel.
 Do not write the final score card before the auditor review directories under
 `logs/evaluate/evaluation/` have been written.
 
-Invoke evaluator helper agents as fresh subagents of their declared type. Do
-not use full-history fork mode such as Codex `spawn_agent` with `fork_context`.
-Fresh subagents do not inherit your conversation context, so give each one a
-self-contained task message.
+Invoke evaluator helper agents as fresh subagents of their declared type using
+the current runtime's native subagent tool. With OpenCode, use its `task` tool;
+with Codex, use `spawn_agent` without `fork_context`. Fresh subagents do not
+inherit your conversation context, so give each one a self-contained task
+message.
 
 ## Aggregation Contract
 
@@ -105,17 +106,16 @@ aggregate `score`.
 
 ## Score Schema Checker
 
-Before you stop, invoke the predefined `score-schema-checker` subagent from
-`.codex/agents/score-schema-checker.toml`. Run it after writing
+Before you stop, invoke the predefined `score-schema-checker` subagent using the
+current runtime's native subagent tool. Run it after writing
 `logs/evaluate/score.yaml`. Do not finish until you have reviewed that report
 and, if anything fails, repaired `score.yaml` and rerun the checker.
 
 Start a fresh `score-schema-checker` subagent from the current evaluation
 workspace root. The local agent definition is a provider-native subagent, not a
-shell command and not a tool named `score-schema-checker`. For Codex
-`spawn_agent`, do not use full-history fork mode; start a fresh subagent and
-give it a self-contained message that asks it to check
-`logs/evaluate/score.yaml`.
+shell command and not a tool named `score-schema-checker`. Use OpenCode `task`
+or Codex `spawn_agent` without full-history fork mode, and give it a
+self-contained message that asks it to check `logs/evaluate/score.yaml`.
 
 The checker validates both the score schema and required evaluation artifacts,
 including that `logs/evaluate/evaluation/` exists with at least one non-empty

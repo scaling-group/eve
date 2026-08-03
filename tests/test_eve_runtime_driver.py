@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 
 from scaling_evolve.algorithms.eve.runtime.driver import (
+    build_driver,
     build_role_drivers,
     load_pricing_table,
 )
@@ -14,6 +15,7 @@ from scaling_evolve.providers.agent.drivers.codex_tmux import CodexTmuxSessionDr
 
 def test_build_role_drivers_opens_iterm2_for_codex_pool(monkeypatch, tmp_path: Path) -> None:
     opened: list[str] = []
+    pool_kwargs: dict[str, object] = {}
 
     class _FakePool:
         def __init__(self) -> None:
@@ -23,9 +25,13 @@ def test_build_role_drivers_opens_iterm2_for_codex_pool(monkeypatch, tmp_path: P
         def close(self) -> None:
             return None
 
+    def _create_pool(**kwargs):  # noqa: ANN003
+        pool_kwargs.update(kwargs)
+        return _FakePool()
+
     monkeypatch.setattr(
         "scaling_evolve.algorithms.eve.runtime.driver.CodexTmuxPanePool.create",
-        lambda **kwargs: _FakePool(),
+        _create_pool,
     )
     monkeypatch.setattr(
         "scaling_evolve.algorithms.eve.runtime.driver.open_iterm2_window_for_session",
@@ -39,11 +45,58 @@ def test_build_role_drivers_opens_iterm2_for_codex_pool(monkeypatch, tmp_path: P
             "open_iterm2": True,
         },
         run_root=tmp_path / "run-root",
-        workers=2,
+        worker_slots=2,
     )
 
     assert opened == ["codex-pool-test"]
+    assert pool_kwargs["pane_count"] == 2
     drivers.close()
+
+
+def test_driver_builders_reject_legacy_pool_size(tmp_path: Path) -> None:
+    config = {
+        "driver": "codex_tmux",
+        "pool_size": 2,
+        "open_iterm2": False,
+    }
+    message = r"driver\.pool_size.*loop\.n_parallel_phase2"
+
+    with pytest.raises(SystemExit, match=message):
+        build_role_drivers(config, run_root=tmp_path / "role-run", worker_slots=2)
+    with pytest.raises(SystemExit, match=message):
+        build_driver(config, run_root=tmp_path / "standalone-run")
+
+
+def test_build_driver_uses_worker_slots_for_standalone_tmux_pool(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    pool_kwargs: dict[str, object] = {}
+
+    class _FakePool:
+        session_name = "standalone-pool-test"
+        cwd = tmp_path
+
+        def close(self) -> None:
+            return None
+
+    def _create_pool(**kwargs):  # noqa: ANN003
+        pool_kwargs.update(kwargs)
+        return _FakePool()
+
+    monkeypatch.setattr(
+        "scaling_evolve.algorithms.eve.runtime.driver.CodexTmuxPanePool.create",
+        _create_pool,
+    )
+
+    driver = build_driver(
+        {"driver": "codex_tmux"},
+        run_root=tmp_path / "standalone-run",
+        worker_slots=3,
+    )
+
+    assert pool_kwargs["pane_count"] == 3
+    driver.close()
 
 
 def test_build_role_drivers_uses_workspace_write_when_web_search_disabled(
@@ -76,7 +129,7 @@ def test_build_role_drivers_uses_workspace_write_when_web_search_disabled(
             "web_search": "disabled",
         },
         run_root=tmp_path / "run-root",
-        workers=2,
+        worker_slots=2,
     )
 
     solver_driver = drivers.solver_driver
@@ -121,7 +174,7 @@ def test_build_role_drivers_injects_model_provider_env(monkeypatch, tmp_path: Pa
             },
         },
         run_root=tmp_path / "run-root",
-        workers=2,
+        worker_slots=2,
     )
 
     solver_driver = drivers.solver_driver
@@ -175,7 +228,7 @@ def test_build_role_drivers_creates_shared_pool_for_codex_tmux_eval_override(
             },
         },
         run_root=tmp_path / "run-root",
-        workers=2,
+        worker_slots=2,
     )
 
     assert isinstance(drivers.solver_driver, CodexExecSessionDriver)
@@ -198,7 +251,7 @@ def test_build_role_drivers_rejects_unsupported_drivers(
                 "model": "gpt-5.4-mini",
             },
             run_root=tmp_path / "run-root",
-            workers=1,
+            worker_slots=1,
         )
 
 
@@ -213,7 +266,7 @@ def test_build_role_drivers_builds_codex_exec_driver(tmp_path: Path) -> None:
             "web_search": "disabled",
         },
         run_root=tmp_path / "run-root",
-        workers=1,
+        worker_slots=1,
     )
 
     assert isinstance(drivers.solver_driver, CodexExecSessionDriver)
@@ -238,7 +291,7 @@ def test_build_role_drivers_resolves_system_prompt_per_role(
             },
         },
         run_root=tmp_path / "run-root",
-        workers=1,
+        worker_slots=1,
     )
 
     assert isinstance(drivers.solver_driver, CodexExecSessionDriver)
@@ -269,7 +322,7 @@ def test_build_role_drivers_plumbs_codex_multi_agent_role_overrides(
             },
         },
         run_root=tmp_path / "run-root",
-        workers=1,
+        worker_slots=1,
     )
 
     assert isinstance(drivers.solver_driver, CodexExecSessionDriver)
@@ -284,10 +337,10 @@ def test_load_pricing_table_reads_yaml(tmp_path: Path) -> None:
     pricing_path.write_text(
         "\n".join(
             [
-                "haiku:",
-                "  input_per_million: 1.0",
-                "  output_per_million: 5.0",
-                "  cache_read_per_million: 0.1",
+                "gpt-5.4-mini:",
+                "  input_per_million: 0.75",
+                "  output_per_million: 4.5",
+                "  cache_read_per_million: 0.075",
             ]
         )
         + "\n",
@@ -296,6 +349,6 @@ def test_load_pricing_table_reads_yaml(tmp_path: Path) -> None:
 
     table = load_pricing_table(pricing_path)
 
-    assert table["haiku"].input_per_million == pytest.approx(1.0)
-    assert table["haiku"].output_per_million == pytest.approx(5.0)
-    assert table["haiku"].cache_read_per_million == pytest.approx(0.1)
+    assert table["gpt-5.4-mini"].input_per_million == pytest.approx(0.75)
+    assert table["gpt-5.4-mini"].output_per_million == pytest.approx(4.5)
+    assert table["gpt-5.4-mini"].cache_read_per_million == pytest.approx(0.075)

@@ -45,9 +45,10 @@ class AgentProviderConfig(StrictConfigModel):
     """Config for persistent session providers."""
 
     kind: Literal["agent_fork"]
-    driver: Literal["codex_tmux", "codex_exec"]
+    driver: Literal["codex_tmux", "codex_exec", "opencode"]
     executable: str = "codex"
     model: str | None = None
+    variant: str | None = None
     rollout_max_turns: int = Field(
         default=200,
         gt=0,
@@ -61,9 +62,10 @@ class AgentProviderConfig(StrictConfigModel):
     budget_prompt: bool = Field(
         default=True,
         description=(
-            "Enable BudgetPrompt injection via hooks. "
-            "When True (default), the agent is told about its turn budget and "
-            "sees remaining turns after every turn. Set to False for baseline "
+            "Enable Codex BudgetPrompt injection via hooks. "
+            "Codex defaults to True: the agent is told about its turn budget and "
+            "sees remaining turns after every turn. OpenCode defaults to False and "
+            "rejects True because it uses native steps without Codex hooks. Set False for baseline "
             "experiments where you want hard enforcement without the agent knowing."
         ),
     )
@@ -84,6 +86,23 @@ class AgentProviderConfig(StrictConfigModel):
     allow_network: bool | None = None
     allow_subprocess: bool | None = None
     allowed_env_vars: list[str] | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def _apply_driver_defaults(cls, value: object) -> object:
+        payload = _mapping_to_str_dict(value)
+        if payload is None:
+            return value
+        if payload.get("driver") == "opencode":
+            payload.setdefault("executable", "opencode")
+            payload.setdefault("budget_prompt", False)
+            if payload.get("budget_prompt") is True:
+                raise ValueError("budget_prompt must be false for the opencode driver")
+            if payload.get("enable_multi_agent") is not None:
+                raise ValueError("enable_multi_agent is not supported by the opencode driver")
+        elif payload.get("variant") is not None:
+            raise ValueError("variant is only supported by the opencode driver")
+        return payload
 
     @model_validator(mode="before")
     @classmethod

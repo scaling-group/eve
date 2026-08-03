@@ -124,7 +124,13 @@ The solver will be evaluated based on `scoring_rubrics.md`. For all dimensions, 
 
 2. You should also improve the files in `guidance/`, following the instructions above.
 
-**MANDATORY:** Before you stop, you MUST invoke the `reference-validator` and then `check-runner` sub-agents from `.codex/agents/`. Have them execute their configured workflow from the workspace root. These subagents will provide necessary checks without formal evaluation. Do NOT finish without running these checks. If anything fails, repair the output and rerun the check until they pass.
+**MANDATORY:** Before you stop, you MUST invoke the `reference-validator` and
+then `check-runner` through the current runtime's native subagent tool. With
+OpenCode, use `task` with `subagent_type` set to each agent name; with Codex,
+use `spawn_agent`. Have them execute their configured workflow from the
+workspace root. These subagents will provide necessary checks without formal
+evaluation. Do NOT finish without running these checks. If anything fails,
+repair the output and rerun the check until they pass.
 
 Do not ask the human for clarification, approval, or feedback at any point during this run. Do the work autonomously, finish your edits, provide your final summary, and stop.
 

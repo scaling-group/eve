@@ -94,6 +94,11 @@ def expose_guidance_skills(workspace: Path) -> None:
         Path("..") / "guidance" / "skills",
         target_is_directory=True,
     )
+    _ensure_symlink(
+        workspace / ".agents" / "skills",
+        Path("..") / "guidance" / "skills",
+        target_is_directory=True,
+    )
 
 
 def expose_guidance_agents(workspace: Path) -> None:

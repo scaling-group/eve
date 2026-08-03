@@ -1,0 +1,4 @@
+interface:
+  display_name: "Delete EvE Run"
+  short_description: "Safely make an EvE run writable and delete it"
+  default_prompt: "Use $delete-eve-run to safely delete the specified EvE run directory."

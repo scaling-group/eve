@@ -17,10 +17,11 @@ from scaling_evolve.providers.agent.drivers.codex_tmux import (
     CodexTmuxPanePool,
     CodexTmuxSessionDriver,
 )
+from scaling_evolve.providers.agent.drivers.opencode import OpenCodeSessionDriver
 from scaling_evolve.providers.agent.tmux_runtime import open_iterm2_window_for_session
 
 _ROLE_NAMES = ("solver", "eval")
-_SUPPORTED_DRIVER_NAMES = ("codex_exec", "codex_tmux")
+_SUPPORTED_DRIVER_NAMES = ("codex_exec", "codex_tmux", "opencode")
 
 # Repo root, used to resolve repo-relative asset paths in driver config (e.g.
 # `system_prompt_file`) the same way application assets are resolved.
@@ -46,16 +47,21 @@ def build_driver(
     role: str | None = None,
     run_root: str | Path | None = None,
     pane_pool: CodexTmuxPanePool | None = None,
+    worker_slots: int | None = None,
     pricing_table: Mapping[str, TokenPricing] | None = None,
 ) -> SessionDriver:
     role_cfg = _driver_cfg_for_role(driver_cfg, role)
+    _reject_legacy_pool_size(role_cfg)
     driver_name = _driver_name(role_cfg)
+    if driver_name in {"codex_exec", "codex_tmux"} and role_cfg.get("variant") is not None:
+        raise SystemExit("`driver.variant` is only supported by opencode.")
     if driver_name == "codex_tmux":
         return _build_codex_tmux_driver(
             role_cfg,
             role=role,
             run_root=run_root,
             pane_pool=pane_pool,
+            worker_slots=worker_slots,
             pricing_table=pricing_table,
         )
     if driver_name == "codex_exec":
@@ -65,10 +71,17 @@ def build_driver(
             run_root=run_root,
             pricing_table=pricing_table,
         )
+    if driver_name == "opencode":
+        return _build_opencode_driver(
+            role_cfg,
+            role=role,
+            run_root=run_root,
+            pricing_table=pricing_table,
+        )
     if driver_name is None:
         raise SystemExit(
             "Missing driver config. Set `driver.driver` or `driver.provider` to "
-            "`codex_exec` or `codex_tmux`."
+            "`codex_exec`, `codex_tmux`, or `opencode`."
         )
     raise SystemExit(
         f"Unsupported driver `{driver_name}`. Supported drivers: "
@@ -82,6 +95,7 @@ def build_driver_factory(
     role: str | None = None,
     run_root: str | Path | None = None,
     pane_pool: CodexTmuxPanePool | None = None,
+    worker_slots: int | None = None,
     pricing_table: Mapping[str, TokenPricing] | None = None,
 ) -> Callable[[], SessionDriver]:
     snapshot = dict(driver_cfg)
@@ -90,6 +104,7 @@ def build_driver_factory(
         role=role,
         run_root=run_root,
         pane_pool=pane_pool,
+        worker_slots=worker_slots,
         pricing_table=pricing_table,
     )
 
@@ -98,19 +113,21 @@ def build_role_drivers(
     driver_cfg: dict[str, Any],
     *,
     run_root: str | Path,
-    workers: int,
+    worker_slots: int,
     pricing_table: Mapping[str, TokenPricing] | None = None,
 ) -> EveDriverSet:
+    for role_name in _ROLE_NAMES:
+        _reject_legacy_pool_size(_driver_cfg_for_role(driver_cfg, role_name))
+
     pane_pool: CodexTmuxPanePool | None = None
     if any(
         _driver_name(_driver_cfg_for_role(driver_cfg, role_name)) == "codex_tmux"
         for role_name in _ROLE_NAMES
     ):
-        pool_size = _int_config(driver_cfg.get("pool_size"), default=workers)
         pane_pool = CodexTmuxPanePool.create(
             session_name=_tmux_session_name(run_root),
             cwd=Path(run_root).expanduser().resolve(),
-            pane_count=pool_size,
+            pane_count=worker_slots,
         )
         if _bool_config(driver_cfg.get("open_iterm2"), default=True):
             open_iterm2_window_for_session(pane_pool.session_name)
@@ -120,6 +137,7 @@ def build_role_drivers(
         role="solver",
         run_root=run_root,
         pane_pool=pane_pool,
+        worker_slots=worker_slots,
         pricing_table=pricing_table,
     )
     eval_driver_factory = build_driver_factory(
@@ -127,6 +145,7 @@ def build_role_drivers(
         role="eval",
         run_root=run_root,
         pane_pool=pane_pool,
+        worker_slots=worker_slots,
         pricing_table=pricing_table,
     )
     return EveDriverSet(
@@ -142,15 +161,18 @@ def _build_codex_tmux_driver(
     role: str | None,
     run_root: str | Path | None,
     pane_pool: CodexTmuxPanePool | None,
+    worker_slots: int | None,
     pricing_table: Mapping[str, TokenPricing] | None,
 ) -> CodexTmuxSessionDriver:
     if pane_pool is None:
         if run_root is None:
             raise ValueError("codex_tmux requires run_root so it can create a pane pool session.")
+        if isinstance(worker_slots, bool) or not isinstance(worker_slots, int) or worker_slots <= 0:
+            raise ValueError("codex_tmux requires positive worker_slots.")
         pane_pool = CodexTmuxPanePool.create(
             session_name=_tmux_session_name(run_root),
             cwd=run_root,
-            pane_count=_int_config(driver_cfg.get("pool_size"), default=1),
+            pane_count=worker_slots,
         )
         owns_pool = True
     else:
@@ -218,6 +240,68 @@ def _build_codex_exec_driver(
     )
 
 
+def _build_opencode_driver(
+    driver_cfg: dict[str, Any],
+    *,
+    role: str | None,
+    run_root: str | Path | None,
+    pricing_table: Mapping[str, TokenPricing] | None,
+) -> OpenCodeSessionDriver:
+    if _bool_config(driver_cfg.get("budget_prompt"), default=False):
+        raise SystemExit(
+            "`driver.budget_prompt` is a Codex hook feature and must be false for opencode."
+        )
+    _reject_opencode_codex_options(driver_cfg)
+    resolved_run_root = Path(run_root or ".").expanduser().resolve()
+    return OpenCodeSessionDriver(
+        run_root=resolved_run_root,
+        executable=str(driver_cfg.get("executable") or "opencode"),
+        model=_string_config(driver_cfg.get("model")),
+        variant=_string_config(driver_cfg.get("variant")),
+        rollout_max_turns=_int_config(driver_cfg.get("rollout_max_turns"), default=200),
+        budget_prompt=False,
+        timeout_seconds=float(driver_cfg.get("timeout_seconds") or 900.0),
+        role=role,
+        system_prompt_file=_resolve_repo_relative_path(driver_cfg.get("system_prompt_file")),
+        token_pricing=_token_pricing_from_driver_cfg(driver_cfg),
+        pricing_table=pricing_table,
+        provider_env=_provider_env_from_driver_cfg(driver_cfg),
+    )
+
+
+def _reject_opencode_codex_options(driver_cfg: dict[str, Any]) -> None:
+    unsupported = (
+        "allow_network",
+        "approval_policy",
+        "completion_filename",
+        "effort_level",
+        "enable_multi_agent",
+        "instruction_filename",
+        "model_provider",
+        "open_iterm2",
+        "personality",
+        "reasoning_effort",
+        "sandbox_mode",
+        "search_enabled",
+        "web_search",
+    )
+    configured = [key for key in unsupported if driver_cfg.get(key) is not None]
+    if configured:
+        rendered = ", ".join(f"`driver.{key}`" for key in configured)
+        raise SystemExit(f"opencode does not support Codex-specific options: {rendered}.")
+
+    for provider_id, provider_cfg in _model_providers_from_driver_cfg(driver_cfg).items():
+        unsupported_keys = sorted(set(provider_cfg) - {"env_key"})
+        if unsupported_keys:
+            rendered = ", ".join(
+                f"`driver.model_providers.{provider_id}.{key}`" for key in unsupported_keys
+            )
+            raise SystemExit(
+                "opencode only reuses `model_providers.*.env_key`; configure native "
+                f"provider settings in OpenCode instead of {rendered}."
+            )
+
+
 def _driver_cfg_for_role(driver_cfg: dict[str, Any], role: str | None) -> dict[str, Any]:
     resolved = {key: value for key, value in driver_cfg.items() if key != "overrides"}
     if role is None:
@@ -229,6 +313,13 @@ def _driver_cfg_for_role(driver_cfg: dict[str, Any], role: str | None) -> dict[s
     if isinstance(role_override, dict):
         resolved.update(role_override)
     return resolved
+
+
+def _reject_legacy_pool_size(driver_cfg: dict[str, Any]) -> None:
+    if "pool_size" in driver_cfg:
+        raise SystemExit(
+            "`driver.pool_size` is no longer supported; use `loop.n_parallel_phase2` instead."
+        )
 
 
 def _token_pricing_from_driver_cfg(driver_cfg: dict[str, Any]):

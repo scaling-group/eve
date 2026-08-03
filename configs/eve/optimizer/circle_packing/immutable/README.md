@@ -108,11 +108,12 @@ You have two goals:
    would help the current and future iterations.
 
 **MANDATORY:** Before you stop, you MUST invoke the predefined `check-runner`
-sub-agent from `.codex/agents/check-runner.toml`. Have it execute its
-configured check workflow from the workspace root. The check-runner will provide
-necessary sanity checks without formal evaluation. Do NOT finish without running
-this check. If anything fails, repair the output and rerun the check until it
-passes.
+through the current runtime's native subagent tool. With OpenCode, use `task`
+with `subagent_type` set to `check-runner`; with Codex, use `spawn_agent`.
+Have it execute its configured check workflow from the workspace root. The
+check-runner will provide necessary sanity checks without formal evaluation.
+Do NOT finish without running this check. If anything fails, repair the output
+and rerun the check until it passes.
 
 Do not ask the human for clarification, approval, or feedback at any point during
 this run. Do the work autonomously, finish your edits, provide your final

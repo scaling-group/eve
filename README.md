@@ -63,8 +63,7 @@ EvE then searches for strong solutions without requiring a task-specific workflo
 2.  **Agent authentication.** The current public release uses
     [**Codex**](https://github.com/openai/codex) as the default agent backend.
     Install Codex and configure
-    [Codex authentication](https://developers.openai.com/codex/auth). We
-    recommend API-key authentication for EvE runs;
+    [Codex authentication](https://developers.openai.com/codex/auth).
 
 3.  **Hook trust (for Codex >= 0.130.0).** EvE uses hooks for workspace
     sandboxing and budget prompts. Run once per machine from the repository root
@@ -218,7 +217,8 @@ The optimizer config seeds the guidance population and defines worker variants:
 optimizer:
   initial_guidance: configs/eve/optimizer/your_task/initial_guidance
   workers:
-    selection: random
+    selection:
+      _target_: scaling_evolve.algorithms.eve.workspace.worker_selection.RandomWorkerSelector
     items:
       - name: normal
         weight: 1.0
