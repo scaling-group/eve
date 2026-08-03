@@ -1,0 +1,11 @@
+# @package _global_
+# Minimal OpenCode non-interactive driver for fast runtime validation.
+
+driver:
+  driver: opencode
+  executable: opencode
+  model: null
+  variant: null
+  rollout_max_turns: 50
+  budget_prompt: false
+  timeout_seconds: 900

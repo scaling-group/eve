@@ -121,9 +121,6 @@ def _load_solver_worker_configs(
             "optimizer.workers is required. Configure optimizer.workers.items with at least "
             "one solver worker."
         )
-    selection = OmegaConf.select(workers_cfg, "selection", default="random")
-    if selection != "random":
-        raise SystemExit("optimizer.workers.selection only supports `random`.")
     raw_items = OmegaConf.select(workers_cfg, "items")
     if raw_items is None or len(raw_items) == 0:
         raise SystemExit("optimizer.workers.items must contain at least one worker.")
@@ -301,6 +298,7 @@ class EveFactory:
         }
         optimizer_evaluator = instantiate(config.optimizer.evaluation, _convert_="all")
         solver_worker_configs = _load_solver_worker_configs(config, search_root=search_root)
+        worker_selector = instantiate(config.optimizer.workers.selection, _convert_="all")
 
         # --- Populations ---
         solver_pop = SolverPopulation(
@@ -326,6 +324,7 @@ class EveFactory:
             config=loop_cfg,
             immutable_files={},
             worker_configs=solver_worker_configs,
+            worker_selector=worker_selector,
         )
 
         # --- Loop ---

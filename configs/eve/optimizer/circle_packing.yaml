@@ -4,7 +4,8 @@
 optimizer:
   initial_guidance: configs/eve/optimizer/circle_packing/initial_guidance
   workers:
-    selection: random
+    selection:
+      _target_: scaling_evolve.algorithms.eve.workspace.worker_selection.RandomWorkerSelector
     items:
       - name: normal
         weight: 1.0

@@ -719,7 +719,7 @@ def test_agent_provider_prefers_virtualenv_python_for_workspace_runtime(
             {
                 "kind": "agent_fork",
                 "driver": "codex_exec",
-                "model": "haiku",
+                "model": "gpt-5.4-mini",
                 "policy_profile": "benchmark_safe",
             }
         ),
@@ -735,19 +735,19 @@ def test_agent_provider_prefers_virtualenv_python_for_workspace_runtime(
 
 def test_resolve_token_pricing_matches_family_name_by_prefix() -> None:
     pricing = resolve_token_pricing(
-        "haiku-4-5-20251001",
+        "gpt-5.4-mini-20260401",
         None,
         {
-            "haiku": TokenPricing(
-                input_per_million=1.0,
-                output_per_million=5.0,
-                cache_read_per_million=0.1,
+            "gpt-5.4-mini": TokenPricing(
+                input_per_million=0.75,
+                output_per_million=4.5,
+                cache_read_per_million=0.075,
             )
         },
     )
 
     assert pricing is not None
-    assert pricing.input_per_million == 1.0
+    assert pricing.input_per_million == 0.75
 
 
 def test_session_backend_prefers_rollout_summary_for_artifact_store_portable_state(

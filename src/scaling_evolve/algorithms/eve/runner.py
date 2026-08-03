@@ -193,7 +193,7 @@ def run(cfg: DictConfig) -> None:
         drivers = build_role_drivers(
             driver_cfg,
             run_root=run_root,
-            workers=run_config.loop.n_workers_phase2,
+            worker_slots=run_config.loop.n_parallel_phase2,
             pricing_table=pricing_table,
         )
         evaluation_plan = build_evaluation_plan(

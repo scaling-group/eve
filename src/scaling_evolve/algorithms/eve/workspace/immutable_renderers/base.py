@@ -149,6 +149,7 @@ class ImmutableRenderer:
         overlays: list[tuple[str, str]] = []
         prefixes = (
             (".codex/skills/", "guidance/skills/"),
+            (".agents/skills/", "guidance/skills/"),
             (".codex/agents/", "guidance/agents/codex/"),
         )
         for path in sorted(immutable_files):

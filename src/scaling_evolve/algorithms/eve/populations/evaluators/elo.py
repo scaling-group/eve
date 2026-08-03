@@ -79,6 +79,11 @@ class VectorEloEvaluator:
     ) -> dict[str, float]:
         optimizer_ids = [optimizer_id for optimizer_id in ratings if optimizer_id in outcomes]
         deltas = {optimizer_id: 0.0 for optimizer_id in optimizer_ids}
+        # Average each optimizer's all-pairs Elo result over its distinct opponents so
+        # one Phase 3 update stays K-scaled instead of growing with batch width.
+        opponent_count = len(optimizer_ids) - 1
+        if opponent_count <= 0:
+            return deltas
         for index, left_id in enumerate(optimizer_ids):
             left_rating = ratings[left_id]
             left_outcome = outcomes[left_id]
@@ -87,8 +92,9 @@ class VectorEloEvaluator:
                 right_outcome = outcomes[right_id]
                 expected_left = 1.0 / (1.0 + math.pow(10.0, (right_rating - left_rating) / 400.0))
                 actual_left = self._elo_outcome(left_outcome, right_outcome)
-                deltas[left_id] += k_factor * (actual_left - expected_left)
-                deltas[right_id] += k_factor * ((1.0 - actual_left) - (1.0 - expected_left))
+                left_delta = k_factor * (actual_left - expected_left) / opponent_count
+                deltas[left_id] += left_delta
+                deltas[right_id] -= left_delta
         return deltas
 
     def _elo_outcome(self, left: float, right: float) -> float:

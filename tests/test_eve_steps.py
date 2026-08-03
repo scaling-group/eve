@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 import logging
 import random
+import threading
+import time
 import tomllib
 from dataclasses import replace
 from pathlib import Path
@@ -59,6 +61,10 @@ from scaling_evolve.algorithms.eve.workspace.solver_workspace import (
     SolverWorkerConfig,
     SolverWorkspaceBuilder,
 )
+from scaling_evolve.algorithms.eve.workspace.worker_selection import (
+    RandomWorkerSelector,
+    RoundRobinWorkerSelector,
+)
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 
@@ -94,6 +100,7 @@ def _solver_workspace_builder_kwargs(config: DictConfig) -> dict[str, object]:
         "immutable_files": _immutable_files(config),
         "immutable_renderer": _default_renderer(),
         "boundary_repair_prompt": _default_boundary_repair_prompt(),
+        "worker_selector": RandomWorkerSelector(),
     }
 
 
@@ -105,6 +112,7 @@ def _make_test_config(workspace_root: Path | str = "run", **overrides) -> DictCo
     cfg = {
         "max_iterations": 2,
         "n_workers_phase2": 2,
+        "n_parallel_phase2": 2,
         "n_solver_examples_phase2": 4,
         "n_optimizer_examples_phase2": 4,
         "exclude_all_working_optimizers_from_examples": False,
@@ -112,6 +120,7 @@ def _make_test_config(workspace_root: Path | str = "run", **overrides) -> DictCo
         "enable_resume": True,
         "retain_workspaces": True,
         "produce_optimizer_in_phase2": 0,
+        "optimizer_log_inheritance": "current",
         "sampling": {
             "working_optimizer": {
                 "_target_": f"{_RS}.RankSoftmaxSampler",
@@ -254,6 +263,74 @@ def _score(value: float, *, summary: str | None = None) -> object:
 
 def _optimizer_score(value: float) -> object:
     return {"elo": value}
+
+
+def _phase3_optimizer(entry_id: str, score: object | None = None) -> PopulationEntry:
+    return PopulationEntry(
+        id=entry_id,
+        files={"APPROACH.md": entry_id},
+        score=_optimizer_score(1500.0) if score is None else score,
+        logs={},
+    )
+
+
+def _phase3_result(
+    optimizer: PopulationEntry,
+    solver_id: str,
+    solver_score: float,
+    produced_optimizer: PopulationEntry | None,
+) -> Phase2Result:
+    return Phase2Result(
+        optimizer=optimizer,
+        produced_solver=PopulationEntry(
+            id=solver_id,
+            files={"candidate.py": solver_id},
+            score=_score(solver_score),
+            logs={},
+        ),
+        produced_optimizer=produced_optimizer,
+    )
+
+
+def _optimizer_elos_by_id(
+    optimizer_pop: _InMemoryOptimizerPopulation,
+    *entry_ids: str,
+) -> dict[str, float]:
+    return {entry_id: optimizer_pop.get(entry_id).score["elo"] for entry_id in entry_ids}
+
+
+class _InMemoryOptimizerPopulation:
+    def __init__(self, entries: list[PopulationEntry]) -> None:
+        self._entries = {entry.id: entry for entry in entries}
+
+    def update_scores(self, updated_scores: dict[str, object]) -> None:
+        for entry_id, score in updated_scores.items():
+            entry = self._entries[entry_id]
+            self._entries[entry_id] = PopulationEntry(
+                id=entry.id,
+                files=entry.files,
+                score=score,
+                logs=entry.logs,
+            )
+
+    def get(self, entry_id: str) -> PopulationEntry:
+        return self._entries[entry_id]
+
+
+class _NestedScoreOptimizerEvaluator:
+    def __init__(self, updated_scores: dict[str, object]) -> None:
+        self.updated_scores = updated_scores
+
+    def update(
+        self,
+        current_scores: dict[str, object],
+        task_scores: dict[str, object],
+    ) -> dict[str, object]:
+        return {
+            result_id: self.updated_scores[result_id]
+            for result_id in current_scores
+            if result_id in task_scores
+        }
 
 
 def _make_problem(tmp_path: Path) -> RepoTaskProblem:
@@ -475,7 +552,6 @@ def test_factory_loads_worker_items_and_rejects_missing_workers(tmp_path: Path) 
         {
             "optimizer": {
                 "workers": {
-                    "selection": "random",
                     "items": [
                         {
                             "name": "normal",
@@ -517,7 +593,7 @@ def test_factory_loads_worker_items_and_rejects_missing_workers(tmp_path: Path) 
         _load_solver_worker_configs(old_shape_cfg, search_root=tmp_path)
 
 
-def test_solver_workspace_builder_weighted_selection_is_seeded(tmp_path: Path) -> None:
+def test_solver_workspace_builder_selection_modes(tmp_path: Path) -> None:
     problem = _make_problem(tmp_path)
     config = _make_test_config(workspace_root=tmp_path / "run")
     worker_configs = [
@@ -528,6 +604,7 @@ def test_solver_workspace_builder_weighted_selection_is_seeded(tmp_path: Path) -
             marker="Exploratory",
             entrypoint="Exploratory.",
         ),
+        _worker_config(name="verify", weight=2.0, marker="Verify", entrypoint="Verify."),
     ]
 
     def selection_sequence(seed: int) -> list[str]:
@@ -537,6 +614,7 @@ def test_solver_workspace_builder_weighted_selection_is_seeded(tmp_path: Path) -
             config=config,
             immutable_files={},
             worker_configs=worker_configs,
+            worker_selector=RandomWorkerSelector(),
             rng=random.Random(seed),
         )
         return [builder.select_worker_config(worker_index=index).name for index in range(200)]
@@ -545,7 +623,8 @@ def test_solver_workspace_builder_weighted_selection_is_seeded(tmp_path: Path) -
     second = selection_sequence(7)
 
     assert first == second
-    assert first.count("exploratory") > first.count("normal") > 0
+    assert set(first) == {"normal", "exploratory", "verify"}
+    assert first.count("exploratory") > first.count("normal")
 
     single_worker_builder = SolverWorkspaceBuilder(
         tmp_path / "single_worker",
@@ -553,12 +632,32 @@ def test_solver_workspace_builder_weighted_selection_is_seeded(tmp_path: Path) -
         config=config,
         immutable_files={},
         worker_configs=[worker_configs[0]],
+        worker_selector=RandomWorkerSelector(),
         rng=random.Random(11),
     )
 
     assert {
         single_worker_builder.select_worker_config(worker_index=index).name for index in range(20)
     } == {"normal"}
+
+    round_robin_builder = SolverWorkspaceBuilder(
+        tmp_path / "solver_workspaces_round_robin",
+        problem=problem,
+        config=config,
+        immutable_files={},
+        worker_configs=worker_configs,
+        worker_selector=RoundRobinWorkerSelector(),
+    )
+
+    assert [
+        round_robin_builder.select_worker_config(worker_index=index).name for index in range(1, 6)
+    ] == [
+        "normal",
+        "exploratory",
+        "verify",
+        "normal",
+        "exploratory",
+    ]
 
 
 def test_solver_workspace_materializes_selected_worker_assets(tmp_path: Path) -> None:
@@ -582,6 +681,7 @@ def test_solver_workspace_materializes_selected_worker_assets(tmp_path: Path) ->
         config=config,
         immutable_files={},
         worker_configs=[normal_worker, exploratory_worker],
+        worker_selector=RandomWorkerSelector(),
     )
     optimizer = PopulationEntry(id="opt", files={"APPROACH.md": "approach"}, score={}, logs={})
     solver = PopulationEntry(
@@ -647,6 +747,7 @@ def test_phase2_worker_without_readme_uses_inline_instruction_only(tmp_path: Pat
         config=config,
         immutable_files={},
         worker_configs=[worker],
+        worker_selector=RandomWorkerSelector(),
     )
     optimizer = PopulationEntry(id="opt-1", files={"APPROACH.md": "approach"}, score={}, logs={})
     candidate = PopulationEntry(
@@ -709,6 +810,7 @@ def test_normal_worker_matches_default_materialized_assets(tmp_path: Path) -> No
         config=config,
         immutable_files={},
         worker_configs=[normal_worker],
+        worker_selector=RandomWorkerSelector(),
     )
 
     def materialize(
@@ -1000,7 +1102,7 @@ def test_phase2_workspace_logs_are_direct_and_optimizer_history_uses_iteration_s
     assert "optimize/token_usage.json" in result.produced_solver.logs
     assert '"attempts"' in result.produced_solver.logs["optimize/token_usage.json"]
     assert "evaluate/summary.txt" in result.produced_solver.logs
-    step_root = f"step_3_{result.produced_solver.id}"
+    step_root = f"step_3_worker_1_{result.produced_solver.id}"
     assert f"{step_root}/solver/candidate.py" in result.optimizer_log_tree
     assert f"{step_root}/logs/optimize/agent-note.txt" in result.optimizer_log_tree
     assert f"{step_root}/logs/optimize/token_usage.json" in result.optimizer_log_tree
@@ -1029,6 +1131,270 @@ def test_phase2_workspace_logs_are_direct_and_optimizer_history_uses_iteration_s
     assert not (workspace / "logs" / "evaluate").exists()
     assert not (workspace / "guidance" / "PROBLEM.md").exists()
     assert not (workspace / "guidance" / "FORMAL_EVALUATION.md").exists()
+
+
+def test_phase2_agent_error_evaluates_partial_solver_workspace(tmp_path: Path) -> None:
+    class _FailingDriver(_FakeDriver):
+        def spawn(self, seed: object) -> object:
+            workspace = Path(seed.working_directory)
+            (workspace / "solver" / "candidate.py").write_text(
+                "print('partial candidate')\n",
+                encoding="utf-8",
+            )
+            optimize_dir = workspace / "logs" / "optimize"
+            optimize_dir.mkdir(parents=True, exist_ok=True)
+            (optimize_dir / "agent-note.txt").write_text("partial output\n", encoding="utf-8")
+            raise RuntimeError("provider failed after writing partial output")
+
+    problem = _make_problem(tmp_path)
+    driver = _FailingDriver()
+    config = _instantiate_test_instructions(_make_test_config(workspace_root=tmp_path / "run"))
+    solver_workspace_builder = SolverWorkspaceBuilder(
+        tmp_path / "solver_workspaces",
+        problem=problem,
+        config=config,
+        **_solver_workspace_builder_kwargs(config),
+    )
+    optimizer = PopulationEntry(
+        id="opt-1",
+        files={"APPROACH.md": "approach"},
+        score=_optimizer_score(1500.0),
+        logs={},
+    )
+    candidate = PopulationEntry(
+        id="solver_1",
+        files={"candidate.py": "print('seed')\n"},
+        score=_score(0.4),
+        logs={},
+    )
+
+    result = Phase2Runner(
+        solver_workspace_builder=solver_workspace_builder,
+        driver=driver,
+        solver_evaluator=_make_solver_evaluator(
+            problem,
+            eval_fn=lambda workspace_root, candidate_files=None, **kwargs: (
+                _score(2.0, summary=candidate_files["candidate.py"].strip()),
+                {"summary.txt": "evaluated partial workspace\n"},
+            ),
+        ),
+        step_label="step_3",
+        iteration=3,
+    ).run_single(
+        optimizer=optimizer,
+        solvers=[candidate],
+        prefill_solver=candidate,
+        worker_index=1,
+    )
+
+    assert result.produced_solver is not None
+    assert result.produced_solver.files == {"candidate.py": "print('partial candidate')\n"}
+    assert result.produced_solver.score == {
+        "score": 2.0,
+        "summary": "print('partial candidate')",
+    }
+    assert result.produced_solver.logs["optimize/agent-note.txt"] == "partial output\n"
+    assert (
+        "provider failed after writing partial output"
+        in result.produced_solver.logs["optimize/agent_error.txt"]
+    )
+    assert "evaluate/summary.txt" in result.produced_solver.logs
+
+
+def test_phase2_batch_adds_agent_error_evaluated_partial_solver(tmp_path: Path) -> None:
+    class _Population:
+        def __init__(self, entries: list[PopulationEntry]) -> None:
+            self._entries = list(entries)
+            self._rng = random.Random(0)
+
+        def entries(self) -> list[PopulationEntry]:
+            return list(self._entries)
+
+        def add(self, entry: PopulationEntry) -> None:
+            self._entries.append(entry)
+
+        def update_logs(self, logs_by_id: dict[str, dict[str, str]]) -> None:
+            _ = logs_by_id
+
+    class _HeadSampler:
+        def sample(self, entries, scores, n, rng):  # noqa: ANN001, ARG002
+            _ = scores
+            _ = rng
+            return list(entries[:n])
+
+    class _FailingDriver(_FakeDriver):
+        def spawn(self, seed: object) -> object:
+            workspace = Path(seed.working_directory)
+            (workspace / "solver" / "candidate.py").write_text(
+                "print('batch partial')\n",
+                encoding="utf-8",
+            )
+            raise RuntimeError("provider failed")
+
+    problem = _make_problem(tmp_path)
+    config = _instantiate_test_instructions(
+        _make_test_config(
+            workspace_root=tmp_path / "run",
+            n_workers_phase2=1,
+            n_parallel_phase2=1,
+            n_solver_examples_phase2=1,
+            n_optimizer_examples_phase2=0,
+        )
+    )
+    solver_workspace_builder = SolverWorkspaceBuilder(
+        tmp_path / "solver_workspaces",
+        problem=problem,
+        config=config,
+        **_solver_workspace_builder_kwargs(config),
+    )
+    solver_pop = _Population(
+        [
+            PopulationEntry(
+                id="solver_1",
+                files={"candidate.py": "print('seed')\n"},
+                score=_score(0.4),
+                logs={},
+            )
+        ]
+    )
+    optimizer_pop = _Population(
+        [
+            PopulationEntry(
+                id="opt_1",
+                files={"APPROACH.md": "approach"},
+                score=_optimizer_score(1500.0),
+                logs={},
+            )
+        ]
+    )
+
+    results = Phase2BatchRunner(
+        solver_workspace_builder=solver_workspace_builder,
+        driver=_FailingDriver(),
+        solver_evaluator=_make_solver_evaluator(
+            problem,
+            eval_fn=lambda workspace_root, candidate_files=None, **kwargs: (
+                _score(3.0, summary=candidate_files["candidate.py"].strip()),
+                {"summary.txt": "evaluated partial workspace\n"},
+            ),
+        ),
+        step_label="step_3",
+        iteration=3,
+        solver_pop=solver_pop,
+        optimizer_pop=optimizer_pop,
+        n_workers_phase2=1,
+        n_parallel_phase2=1,
+        n_solver_examples_phase2=1,
+        n_optimizer_examples_phase2=0,
+        exclude_all_working_optimizers_from_examples=False,
+        n_produced_optimizers_phase2=0,
+        optimizer_sampler=_HeadSampler(),
+        solver_sampler=_HeadSampler(),
+        prefill_sampler=_HeadSampler(),
+        optimizer_examples_sampler=_HeadSampler(),
+        produced_optimizer_sampler=_HeadSampler(),
+    ).run()
+
+    assert len(results) == 1
+    assert results[0].produced_solver is not None
+    assert results[0].produced_solver.files == {"candidate.py": "print('batch partial')\n"}
+    assert solver_pop.entries()[-1] == results[0].produced_solver
+
+
+def test_phase2_batch_evaluates_prefill_when_agent_fails_before_edits(tmp_path: Path) -> None:
+    class _Population:
+        def __init__(self, entries: list[PopulationEntry]) -> None:
+            self._entries = list(entries)
+            self._rng = random.Random(0)
+
+        def entries(self) -> list[PopulationEntry]:
+            return list(self._entries)
+
+        def add(self, entry: PopulationEntry) -> None:
+            self._entries.append(entry)
+
+        def update_logs(self, logs_by_id: dict[str, dict[str, str]]) -> None:
+            _ = logs_by_id
+
+    class _HeadSampler:
+        def sample(self, entries, scores, n, rng):  # noqa: ANN001, ARG002
+            _ = scores
+            _ = rng
+            return list(entries[:n])
+
+    class _FailingDriver(_FakeDriver):
+        def spawn(self, seed: object) -> object:
+            _ = seed
+            raise RuntimeError("provider crashed before producing output")
+
+    problem = _make_problem(tmp_path)
+    config = _instantiate_test_instructions(
+        _make_test_config(
+            workspace_root=tmp_path / "run",
+            n_workers_phase2=1,
+            n_parallel_phase2=1,
+            n_solver_examples_phase2=1,
+            n_optimizer_examples_phase2=0,
+        )
+    )
+    solver_workspace_builder = SolverWorkspaceBuilder(
+        tmp_path / "solver_workspaces",
+        problem=problem,
+        config=config,
+        **_solver_workspace_builder_kwargs(config),
+    )
+    solver_pop = _Population(
+        [
+            PopulationEntry(
+                id="solver_1",
+                files={"candidate.py": "print('seed')\n"},
+                score=_score(0.4),
+                logs={},
+            )
+        ]
+    )
+    optimizer_pop = _Population(
+        [
+            PopulationEntry(
+                id="opt_1",
+                files={"APPROACH.md": "approach"},
+                score=_optimizer_score(1500.0),
+                logs={},
+            )
+        ]
+    )
+
+    results = Phase2BatchRunner(
+        solver_workspace_builder=solver_workspace_builder,
+        driver=_FailingDriver(),
+        solver_evaluator=_make_solver_evaluator(
+            problem,
+            eval_fn=lambda workspace_root, candidate_files=None, **kwargs: (
+                _score(3.0),
+                {"summary.txt": "should not run\n"},
+            ),
+        ),
+        step_label="step_3",
+        iteration=3,
+        solver_pop=solver_pop,
+        optimizer_pop=optimizer_pop,
+        n_workers_phase2=1,
+        n_parallel_phase2=1,
+        n_solver_examples_phase2=1,
+        n_optimizer_examples_phase2=0,
+        exclude_all_working_optimizers_from_examples=False,
+        n_produced_optimizers_phase2=0,
+        optimizer_sampler=_HeadSampler(),
+        solver_sampler=_HeadSampler(),
+        prefill_sampler=_HeadSampler(),
+        optimizer_examples_sampler=_HeadSampler(),
+        produced_optimizer_sampler=_HeadSampler(),
+    ).run()
+
+    assert len(results) == 1
+    assert results[0].produced_solver is not None
+    assert results[0].produced_solver.files == {"candidate.py": "print('seed')\n"}
+    assert len(solver_pop.entries()) == 2
 
 
 def test_phase2_can_produce_optimizer_when_configured(tmp_path: Path) -> None:
@@ -1097,6 +1463,174 @@ def test_phase2_can_produce_optimizer_when_configured(tmp_path: Path) -> None:
     workspace = next((tmp_path / "solver_workspaces").glob("*"))
     assert (workspace / "guidance" / "APPROACH.md").exists()
     assert not (workspace / "score.yaml").exists()
+
+
+def test_phase2_parent_log_inheritance_keeps_full_optimizer_log_tree(tmp_path: Path) -> None:
+    problem = _make_problem(tmp_path)
+    driver = _FakeDriver()
+    driver.optimizer_guidance_update = {"APPROACH.md": "updated approach"}
+    config = _instantiate_test_instructions(
+        _make_test_config(
+            workspace_root=tmp_path / "run",
+            produce_optimizer_in_phase2=1,
+            optimizer_log_inheritance="parent",
+        )
+    )
+    solver_workspace_builder = SolverWorkspaceBuilder(
+        tmp_path / "solver_workspaces",
+        problem=problem,
+        config=config,
+        **_solver_workspace_builder_kwargs(config),
+    )
+    optimizer = PopulationEntry(
+        id="opt-1",
+        files={"APPROACH.md": "approach"},
+        score=_optimizer_score(1500.0),
+        logs={},
+    )
+    candidate = PopulationEntry(
+        id="solver_1",
+        files={"candidate.py": "print('seed')\n"},
+        score=_score(0.4),
+        logs={},
+    )
+
+    result = Phase2Runner(
+        solver_workspace_builder=solver_workspace_builder,
+        driver=driver,
+        solver_evaluator=_make_solver_evaluator(
+            problem,
+            eval_fn=lambda files, display_context=None, **kwargs: (
+                _score(1.0),
+                {"summary.txt": "evaluation summary"},
+            ),
+        ),
+        step_label="step_3",
+        iteration=3,
+    ).run_single(
+        optimizer=optimizer,
+        solvers=[candidate],
+        prefill_solver=candidate,
+        worker_index=1,
+    )
+
+    assert result.produced_optimizer is not None
+    assert result.produced_optimizer.logs == result.optimizer_log_tree
+
+
+def test_phase2_current_log_inheritance_keeps_only_current_worker_logs(tmp_path: Path) -> None:
+    problem = _make_problem(tmp_path)
+    driver = _FakeDriver()
+    driver.optimizer_guidance_update = {"APPROACH.md": "updated approach"}
+    config = _instantiate_test_instructions(
+        _make_test_config(
+            workspace_root=tmp_path / "run",
+            produce_optimizer_in_phase2=1,
+            optimizer_log_inheritance="current",
+        )
+    )
+    solver_workspace_builder = SolverWorkspaceBuilder(
+        tmp_path / "solver_workspaces",
+        problem=problem,
+        config=config,
+        **_solver_workspace_builder_kwargs(config),
+    )
+    optimizer = PopulationEntry(
+        id="opt-1",
+        files={"APPROACH.md": "approach"},
+        score=_optimizer_score(1500.0),
+        logs={},
+    )
+    candidate = PopulationEntry(
+        id="solver_1",
+        files={"candidate.py": "print('seed')\n"},
+        score=_score(0.4),
+        logs={},
+    )
+
+    result = Phase2Runner(
+        solver_workspace_builder=solver_workspace_builder,
+        driver=driver,
+        solver_evaluator=_make_solver_evaluator(
+            problem,
+            eval_fn=lambda files, display_context=None, **kwargs: (
+                _score(1.0),
+                {"summary.txt": "evaluation summary"},
+            ),
+        ),
+        step_label="step_3",
+        iteration=3,
+    ).run_single(
+        optimizer=optimizer,
+        solvers=[candidate],
+        prefill_solver=candidate,
+        worker_index=1,
+    )
+
+    assert result.produced_optimizer is not None
+    assert result.produced_optimizer.logs
+    assert result.produced_optimizer.logs == {
+        path: content
+        for path, content in result.optimizer_log_tree.items()
+        if path.split("/", 1)[0] == f"step_3_worker_1_{result.produced_solver.id}"
+    }
+    assert {path.split("/", 1)[0] for path in result.produced_optimizer.logs} == {
+        f"step_3_worker_1_{result.produced_solver.id}"
+    }
+
+
+def test_phase2_no_log_inheritance_keeps_produced_optimizer_logs_empty(tmp_path: Path) -> None:
+    problem = _make_problem(tmp_path)
+    driver = _FakeDriver()
+    driver.optimizer_guidance_update = {"APPROACH.md": "updated approach"}
+    config = _instantiate_test_instructions(
+        _make_test_config(
+            workspace_root=tmp_path / "run",
+            produce_optimizer_in_phase2=1,
+            optimizer_log_inheritance="no",
+        )
+    )
+    solver_workspace_builder = SolverWorkspaceBuilder(
+        tmp_path / "solver_workspaces",
+        problem=problem,
+        config=config,
+        **_solver_workspace_builder_kwargs(config),
+    )
+    optimizer = PopulationEntry(
+        id="opt-1",
+        files={"APPROACH.md": "approach"},
+        score=_optimizer_score(1500.0),
+        logs={},
+    )
+    candidate = PopulationEntry(
+        id="solver_1",
+        files={"candidate.py": "print('seed')\n"},
+        score=_score(0.4),
+        logs={},
+    )
+
+    result = Phase2Runner(
+        solver_workspace_builder=solver_workspace_builder,
+        driver=driver,
+        solver_evaluator=_make_solver_evaluator(
+            problem,
+            eval_fn=lambda files, display_context=None, **kwargs: (
+                _score(1.0),
+                {"summary.txt": "evaluation summary"},
+            ),
+        ),
+        step_label="step_3",
+        iteration=3,
+    ).run_single(
+        optimizer=optimizer,
+        solvers=[candidate],
+        prefill_solver=candidate,
+        worker_index=1,
+    )
+
+    assert result.produced_optimizer is not None
+    assert result.produced_optimizer.logs == {}
+    assert result.optimizer_log_tree
 
 
 def test_phase2_skips_optimizer_candidate_when_guidance_is_unchanged(
@@ -1229,6 +1763,7 @@ def test_phase2_batch_adds_configured_optimizer_candidate(tmp_path: Path) -> Non
         solver_pop=solver_pop,
         optimizer_pop=optimizer_pop,
         n_workers_phase2=1,
+        n_parallel_phase2=1,
         n_solver_examples_phase2=1,
         n_optimizer_examples_phase2=0,
         exclude_all_working_optimizers_from_examples=False,
@@ -1412,6 +1947,7 @@ def test_phase2_batch_reuses_same_optimizer_examples_for_all_workers(
         solver_pop=solver_pop,
         optimizer_pop=optimizer_pop,
         n_workers_phase2=2,
+        n_parallel_phase2=2,
         n_solver_examples_phase2=1,
         n_optimizer_examples_phase2=2,
         exclude_all_working_optimizers_from_examples=True,
@@ -1425,6 +1961,127 @@ def test_phase2_batch_reuses_same_optimizer_examples_for_all_workers(
 
     assert optimizer_examples_sampler.calls == [["opt_3", "opt_4"]]
     assert optimizer_examples_seen == [["opt_1", "opt_3"], ["opt_2", "opt_3"]]
+
+
+def test_phase2_batch_limits_parallelism_independently_from_worker_count(
+    tmp_path: Path, monkeypatch
+) -> None:
+    class _Population:
+        def __init__(self, entries: list[PopulationEntry]) -> None:
+            self._entries = list(entries)
+            self._rng = random.Random(0)
+
+        def entries(self) -> list[PopulationEntry]:
+            return list(self._entries)
+
+        def add(self, entry: PopulationEntry) -> None:
+            self._entries.append(entry)
+
+        def update_logs(self, logs_by_id: dict[str, dict[str, str]]) -> None:
+            _ = logs_by_id
+
+    class _HeadSampler:
+        def sample(self, entries, scores, n, rng):  # noqa: ANN001, ARG002
+            _ = scores
+            _ = rng
+            return list(entries[:n])
+
+    lock = threading.Lock()
+    active = 0
+    max_active = 0
+
+    def _fake_run_single(
+        self, *, optimizer, solvers, optimizer_examples, prefill_solver, worker_index
+    ):
+        _ = (self, solvers, optimizer_examples, prefill_solver)
+        nonlocal active, max_active
+        with lock:
+            active += 1
+            max_active = max(max_active, active)
+        try:
+            time.sleep(0.02)
+            return Phase2Result(
+                optimizer=optimizer,
+                produced_solver=PopulationEntry(
+                    id=f"solver_new_{worker_index}",
+                    files={"candidate.py": f"print({worker_index})\n"},
+                    score=_score(float(worker_index)),
+                    logs={},
+                ),
+            )
+        finally:
+            with lock:
+                active -= 1
+
+    problem = _make_problem(tmp_path)
+    config = _instantiate_test_instructions(
+        _make_test_config(
+            workspace_root=tmp_path / "run",
+            n_workers_phase2=5,
+            n_parallel_phase2=2,
+            n_solver_examples_phase2=1,
+            n_optimizer_examples_phase2=0,
+        )
+    )
+    solver_workspace_builder = SolverWorkspaceBuilder(
+        tmp_path / "solver_workspaces",
+        problem=problem,
+        config=config,
+        **_solver_workspace_builder_kwargs(config),
+    )
+    solver_pop = _Population(
+        [
+            PopulationEntry(
+                id="solver_1",
+                files={"candidate.py": "print('seed')\n"},
+                score=_score(0.4),
+                logs={},
+            )
+        ]
+    )
+    optimizer_pop = _Population(
+        [
+            PopulationEntry(
+                id=f"opt_{index}",
+                files={"APPROACH.md": f"opt{index}"},
+                score=_optimizer_score(1500.0 - index),
+                logs={},
+            )
+            for index in range(5)
+        ]
+    )
+    monkeypatch.setattr(Phase2Runner, "run_single", _fake_run_single)
+
+    results = Phase2BatchRunner(
+        solver_workspace_builder=solver_workspace_builder,
+        driver=_FakeDriver(),
+        solver_evaluator=_make_solver_evaluator(
+            problem,
+            eval_fn=lambda files, display_context=None, **kwargs: (
+                _score(1.0),
+                {"summary.txt": "evaluation summary"},
+            ),
+        ),
+        step_label="step_3",
+        iteration=3,
+        solver_pop=solver_pop,
+        optimizer_pop=optimizer_pop,
+        n_workers_phase2=5,
+        n_solver_examples_phase2=1,
+        n_optimizer_examples_phase2=0,
+        exclude_all_working_optimizers_from_examples=False,
+        n_produced_optimizers_phase2=0,
+        optimizer_sampler=_HeadSampler(),
+        solver_sampler=_HeadSampler(),
+        prefill_sampler=_HeadSampler(),
+        optimizer_examples_sampler=_HeadSampler(),
+        produced_optimizer_sampler=_HeadSampler(),
+        n_parallel_phase2=2,
+    ).run()
+
+    assert len(results) == 5
+    assert max_active == 2
+    assert len(solver_pop.entries()) == 6
 
 
 def test_phase2_batch_can_sample_optimizer_examples_from_working_optimizers(
@@ -1535,6 +2192,7 @@ def test_phase2_batch_can_sample_optimizer_examples_from_working_optimizers(
         solver_pop=solver_pop,
         optimizer_pop=optimizer_pop,
         n_workers_phase2=2,
+        n_parallel_phase2=2,
         n_solver_examples_phase2=1,
         n_optimizer_examples_phase2=2,
         exclude_all_working_optimizers_from_examples=False,
@@ -1669,6 +2327,7 @@ def test_phase2_batch_samples_produced_optimizers_when_configured(
         solver_pop=solver_pop,
         optimizer_pop=optimizer_pop,
         n_workers_phase2=2,
+        n_parallel_phase2=2,
         n_solver_examples_phase2=1,
         n_optimizer_examples_phase2=0,
         exclude_all_working_optimizers_from_examples=False,
@@ -1689,70 +2348,15 @@ def test_phase2_batch_samples_produced_optimizers_when_configured(
 
 
 def test_phase3_syncs_phase2_optimizer_score_to_updated_parent_score() -> None:
-    class _OptimizerPopulation:
-        def __init__(self, entries: list[PopulationEntry]) -> None:
-            self._entries = {entry.id: entry for entry in entries}
-
-        def update_scores(self, updated_scores: dict[str, object]) -> None:
-            for entry_id, score in updated_scores.items():
-                entry = self._entries[entry_id]
-                self._entries[entry_id] = PopulationEntry(
-                    id=entry.id,
-                    files=entry.files,
-                    score=score,
-                    logs=entry.logs,
-                )
-
-        def get(self, entry_id: str) -> PopulationEntry:
-            return self._entries[entry_id]
-
-    parent_a = PopulationEntry(
-        id="optimizer_a",
-        files={"APPROACH.md": "a"},
-        score={"elo": 1500.0},
-        logs={},
-    )
-    parent_b = PopulationEntry(
-        id="optimizer_b",
-        files={"APPROACH.md": "b"},
-        score={"elo": 1500.0},
-        logs={},
-    )
-    produced_a = PopulationEntry(
-        id="optimizer_new_a",
-        files={"APPROACH.md": "a2"},
-        score={"elo": 1500.0},
-        logs={},
-    )
-    produced_b = PopulationEntry(
-        id="optimizer_new_b",
-        files={"APPROACH.md": "b2"},
-        score={"elo": 1500.0},
-        logs={},
-    )
+    parent_a = _phase3_optimizer("optimizer_a")
+    parent_b = _phase3_optimizer("optimizer_b")
+    produced_a = _phase3_optimizer("optimizer_new_a")
+    produced_b = _phase3_optimizer("optimizer_new_b")
     phase2_results = [
-        Phase2Result(
-            optimizer=parent_a,
-            produced_solver=PopulationEntry(
-                id="solver_a",
-                files={"candidate.py": "a"},
-                score=_score(1.0),
-                logs={},
-            ),
-            produced_optimizer=produced_a,
-        ),
-        Phase2Result(
-            optimizer=parent_b,
-            produced_solver=PopulationEntry(
-                id="solver_b",
-                files={"candidate.py": "b"},
-                score=_score(0.0),
-                logs={},
-            ),
-            produced_optimizer=produced_b,
-        ),
+        _phase3_result(parent_a, "solver_a", 1.0, produced_a),
+        _phase3_result(parent_b, "solver_b", 0.0, produced_b),
     ]
-    optimizer_pop = _OptimizerPopulation([parent_a, parent_b, produced_a, produced_b])
+    optimizer_pop = _InMemoryOptimizerPopulation([parent_a, parent_b, produced_a, produced_b])
 
     score_optimizers(
         optimizers=[parent_a, parent_b],
@@ -1767,6 +2371,131 @@ def test_phase3_syncs_phase2_optimizer_score_to_updated_parent_score() -> None:
     assert phase2_results[0].produced_optimizer.score == {"elo": 1516.0}
     assert optimizer_pop.get("optimizer_b").score == {"elo": 1484.0}
     assert optimizer_pop.get("optimizer_new_b").score == {"elo": 1484.0}
+
+
+def test_phase3_scores_duplicate_optimizer_results_without_collapsing() -> None:
+    parent_a = _phase3_optimizer("optimizer_a")
+    parent_b = _phase3_optimizer("optimizer_b")
+    produced_a_high = _phase3_optimizer("optimizer_new_a_high")
+    produced_b = _phase3_optimizer("optimizer_new_b")
+    produced_a_low = _phase3_optimizer("optimizer_new_a_low")
+    phase2_results = [
+        _phase3_result(parent_a, "solver_a_high", 1.0, produced_a_high),
+        _phase3_result(parent_b, "solver_b", 0.0, produced_b),
+        _phase3_result(parent_a, "solver_a_low", 0.0, produced_a_low),
+    ]
+    optimizer_pop = _InMemoryOptimizerPopulation(
+        [parent_a, parent_b, produced_a_high, produced_b, produced_a_low]
+    )
+
+    score_optimizers(
+        optimizers=[parent_a, parent_b, parent_a],
+        phase2_results=phase2_results,
+        optimizer_pop=optimizer_pop,
+        optimizer_evaluator=ScalarEloEvaluator(k_factor=32.0),
+    )
+
+    assert _optimizer_elos_by_id(
+        optimizer_pop,
+        "optimizer_a",
+        "optimizer_b",
+        "optimizer_new_a_high",
+        "optimizer_new_b",
+        "optimizer_new_a_low",
+    ) == pytest.approx(
+        {
+            "optimizer_a": 1508.0,
+            "optimizer_b": 1492.0,
+            "optimizer_new_a_high": 1516.0,
+            "optimizer_new_b": 1492.0,
+            "optimizer_new_a_low": 1492.0,
+        }
+    )
+    assert phase2_results[0].produced_optimizer is not None
+    assert phase2_results[0].produced_optimizer.score["elo"] == pytest.approx(1516.0)
+
+
+def test_phase3_duplicate_self_comparison_cancels_parent_but_scores_children() -> None:
+    parent = _phase3_optimizer("optimizer_a")
+    produced_high = _phase3_optimizer("optimizer_new_a_high")
+    produced_low = _phase3_optimizer("optimizer_new_a_low")
+    phase2_results = [
+        _phase3_result(parent, "solver_a_high", 1.0, produced_high),
+        _phase3_result(parent, "solver_a_low", 0.0, produced_low),
+    ]
+    optimizer_pop = _InMemoryOptimizerPopulation([parent, produced_high, produced_low])
+
+    score_optimizers(
+        optimizers=[parent, parent],
+        phase2_results=phase2_results,
+        optimizer_pop=optimizer_pop,
+        optimizer_evaluator=ScalarEloEvaluator(k_factor=32.0),
+    )
+
+    assert _optimizer_elos_by_id(
+        optimizer_pop,
+        "optimizer_a",
+        "optimizer_new_a_high",
+        "optimizer_new_a_low",
+    ) == pytest.approx(
+        {
+            "optimizer_a": 1500.0,
+            "optimizer_new_a_high": 1516.0,
+            "optimizer_new_a_low": 1484.0,
+        }
+    )
+    assert phase2_results[0].produced_optimizer is not None
+    assert phase2_results[0].produced_optimizer.score["elo"] == pytest.approx(1516.0)
+    assert phase2_results[1].produced_optimizer is not None
+    assert phase2_results[1].produced_optimizer.score["elo"] == pytest.approx(1484.0)
+
+
+def test_phase3_aggregates_parent_score_numeric_pytree_leaves() -> None:
+    parent = _phase3_optimizer(
+        "optimizer_a",
+        {
+            "metrics": {"elo": 1500.0, "stability": 10.0},
+            "label": "parent",
+        },
+    )
+    produced_high = _phase3_optimizer("optimizer_new_a_high")
+    produced_low = _phase3_optimizer("optimizer_new_a_low")
+    phase2_results = [
+        _phase3_result(parent, "solver_a_high", 1.0, produced_high),
+        _phase3_result(parent, "solver_a_low", 0.0, produced_low),
+    ]
+    optimizer_pop = _InMemoryOptimizerPopulation([parent, produced_high, produced_low])
+
+    score_optimizers(
+        optimizers=[parent, parent],
+        phase2_results=phase2_results,
+        optimizer_pop=optimizer_pop,
+        optimizer_evaluator=_NestedScoreOptimizerEvaluator(
+            {
+                "phase2_result_0": {
+                    "metrics": {"elo": 1516.0, "stability": 13.0},
+                    "label": "result-high",
+                },
+                "phase2_result_1": {
+                    "metrics": {"elo": 1492.0, "stability": 9.0},
+                    "label": "result-low",
+                },
+            }
+        ),
+    )
+
+    assert optimizer_pop.get("optimizer_a").score == {
+        "metrics": {"elo": 1508.0, "stability": 12.0},
+        "label": "parent",
+    }
+    assert optimizer_pop.get("optimizer_new_a_high").score == {
+        "metrics": {"elo": 1516.0, "stability": 13.0},
+        "label": "result-high",
+    }
+    assert optimizer_pop.get("optimizer_new_a_low").score == {
+        "metrics": {"elo": 1492.0, "stability": 9.0},
+        "label": "result-low",
+    }
 
 
 def test_phase2_system_prompt_includes_important_message_when_enabled(tmp_path: Path) -> None:
@@ -1882,6 +2611,55 @@ def test_phase2_runner_writes_rollout_prompt_specs_into_workspace(tmp_path: Path
     ]
 
 
+def test_phase2_refreshes_runtime_hooks_before_resume(monkeypatch, tmp_path: Path) -> None:
+    hook_calls: list[Path] = []
+
+    def record_hooks(workspace, *, driver, prompt_specs):  # noqa: ANN001
+        _ = (driver, prompt_specs)
+        hook_calls.append(workspace)
+
+    monkeypatch.setattr(
+        "scaling_evolve.algorithms.eve.workflow.phase2.install_workspace_runtime_hooks",
+        record_hooks,
+    )
+    monkeypatch.setattr(
+        "scaling_evolve.algorithms.eve.workflow.phase2.build_optimize_log_tree",
+        lambda *args, **kwargs: {},
+    )
+    boundary_results = iter(
+        [
+            BoundaryCheckResult(forbidden_created=("forbidden.txt",)),
+            BoundaryCheckResult(),
+        ]
+    )
+    driver = _FakeDriver()
+    driver.budget_prompt = False
+    builder = SimpleNamespace(
+        config=SimpleNamespace(boundary_repair_attempts=1),
+        entrypoint_instruction=lambda **kwargs: "start",
+        boundary_repair_instruction=lambda *args, **kwargs: "repair",
+    )
+    evaluator = SimpleNamespace(
+        check_boundary=lambda *args, **kwargs: next(boundary_results),
+    )
+    runner = Phase2Runner(
+        solver_workspace_builder=builder,
+        driver=driver,
+        solver_evaluator=evaluator,
+        step_label="step_1",
+        iteration=1,
+    )
+    runner.workspace = tmp_path
+    runner.optimizer = PopulationEntry(id="optimizer", files={}, score={}, logs={})
+    runner.prefill_solver = PopulationEntry(id="solver", files={}, score={}, logs={})
+    runner.worker_config = SimpleNamespace(name="test")
+
+    runner._run_agent()
+
+    assert driver.resume_calls == 1
+    assert hook_calls == [tmp_path, tmp_path]
+
+
 def test_solver_workspace_exposes_context_skills_via_root_links(tmp_path: Path) -> None:
     problem = _make_problem(tmp_path)
     config = _make_test_config(workspace_root=tmp_path / "run")
@@ -1909,6 +2687,10 @@ def test_solver_workspace_exposes_context_skills_via_root_links(tmp_path: Path) 
     ) == "skill body\n"
     assert not (workspace / "skills").exists()
     assert (workspace / ".codex" / "skills").is_symlink()
+    assert (workspace / ".agents" / "skills").is_symlink()
+    assert (workspace / ".agents" / "skills" / "read-eval" / "SKILL.md").read_text(
+        encoding="utf-8"
+    ) == "skill body\n"
     assert (workspace / ".codex" / "skills" / "read-eval" / "SKILL.md").read_text(
         encoding="utf-8"
     ) == "skill body\n"
@@ -1999,6 +2781,31 @@ def test_scalar_elo_uses_numeric_score_field() -> None:
 
     assert updated["optimizer_a"] == {"elo": 1516.0}
     assert updated["optimizer_b"] == {"elo": 1484.0}
+
+
+def test_scalar_elo_normalizes_by_opponent_count() -> None:
+    current = {
+        "optimizer_a": {"elo": 1500.0},
+        "optimizer_b": {"elo": 1500.0},
+        "optimizer_c": {"elo": 1500.0},
+        "optimizer_d": {"elo": 1500.0},
+    }
+    task_scores = {
+        "optimizer_a": {"score": 4.0},
+        "optimizer_b": {"score": 3.0},
+        "optimizer_c": {"score": 2.0},
+        "optimizer_d": {"score": 1.0},
+    }
+
+    updated = ScalarEloEvaluator(k_factor=32.0).update(
+        current,
+        task_scores,
+    )
+
+    assert updated["optimizer_a"]["elo"] == pytest.approx(1516.0)
+    assert updated["optimizer_b"]["elo"] == pytest.approx(1500.0 + 16.0 / 3.0)
+    assert updated["optimizer_c"]["elo"] == pytest.approx(1500.0 - 16.0 / 3.0)
+    assert updated["optimizer_d"]["elo"] == pytest.approx(1484.0)
 
 
 def test_eval_scalar_elo_uses_score_expression() -> None:
@@ -2294,7 +3101,8 @@ def test_task_context_tells_agent_to_use_boundary_check_during_editing(tmp_path:
     assert "Editable files:" in instruction
     assert "- `solver/candidate.py`" in instruction
     assert "invoke the predefined `check-runner`" in instruction
-    assert "agent from `.codex/agents/check-runner.toml`" in instruction
+    assert "OpenCode, use `task`" in instruction
+    assert "`subagent_type` set to `check-runner`" in instruction
     assert "Other files inside\n`solver/` are read-only." in instruction
 
 

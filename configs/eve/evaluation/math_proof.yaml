@@ -38,4 +38,4 @@ evaluation:
 driver:
   overrides:
     eval:
-      system_prompt_file: configs/eve/evaluation/math_proof/prompt/CODEX_SYSTEM_PROMPT.md
+      system_prompt_file: configs/eve/evaluation/math_proof/prompt/SYSTEM_PROMPT.md

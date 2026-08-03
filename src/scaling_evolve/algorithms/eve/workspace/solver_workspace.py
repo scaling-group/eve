@@ -57,12 +57,14 @@ class SolverWorkspaceBuilder:
         boundary_repair_prompt: str | None = None,
         rollout_prompts: dict[str, object] | None = None,
         worker_configs: list[SolverWorkerConfig] | None = None,
+        worker_selector: object,
         rng: random.Random | None = None,
     ) -> None:
         self.workspace_root = workspace_root
         self.workspace_root.mkdir(parents=True, exist_ok=True)
         self.problem = problem
         self.config = config
+        self.worker_selector = worker_selector
         explicit_worker_configs = worker_configs is not None
         self.worker_configs = list(
             worker_configs
@@ -99,14 +101,13 @@ class SolverWorkspaceBuilder:
         if require_boundary_repair and not worker_config.boundary_repair_prompt:
             raise ValueError(f"worker `{worker_config.name}` requires prompt/BOUNDARY_REPAIR.md.")
 
-    def select_worker_config(self, *, worker_index: int | None = None) -> SolverWorkerConfig:
-        """Return a worker config using weighted random selection."""
-        _ = worker_index
-        return self._rng.choices(
+    def select_worker_config(self, *, worker_index: int) -> SolverWorkerConfig:
+        """Return the worker config assigned to one Phase 2 worker."""
+        return self.worker_selector.select(
             self.worker_configs,
-            weights=[worker.weight for worker in self.worker_configs],
-            k=1,
-        )[0]
+            worker_index=worker_index,
+            rng=self._rng,
+        )
 
     def build(
         self,
@@ -322,6 +323,7 @@ class SolverWorkspaceBuilder:
         overlay_paths: set[str] = set()
         prefixes = (
             (".codex/skills/", "skills/"),
+            (".agents/skills/", "skills/"),
             (".codex/agents/", "agents/codex/"),
         )
         for path in worker_config.immutable_files:

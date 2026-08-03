@@ -118,7 +118,10 @@ class Phase2Runner:
             worker_index=self.worker_index
         )
         self._build_workspace()
-        self._run_agent()
+        try:
+            self._run_agent()
+        except Exception as exc:
+            self._record_agent_error_for_partial_workspace(exc)
         if self.workspace is None or self.boundary_result is None:
             raise ValueError("Phase2Runner.run_single requires completed workspace state.")
         evaluation = self.evaluate_workspace(
@@ -197,6 +200,9 @@ class Phase2Runner:
             and repair_attempts < self.solver_workspace_builder.config.boundary_repair_attempts
         ):
             repair_attempts += 1
+            install_workspace_runtime_hooks(
+                self.workspace, driver=self.driver, prompt_specs=prompt_specs
+            )
             rollout = self.driver.resume(
                 rollout.state,
                 instruction=self.solver_workspace_builder.boundary_repair_instruction(
@@ -215,6 +221,24 @@ class Phase2Runner:
                 "boundary/forbidden_changes.txt", boundary_result.summary() + "\n"
             )
         self.boundary_result = boundary_result
+
+    def _record_agent_error_for_partial_workspace(self, exc: BaseException) -> None:
+        if self.workspace is None:
+            raise ValueError(
+                "Phase2Runner._record_agent_error_for_partial_workspace requires workspace."
+            )
+        _LOGGER.warning(
+            "%s: agent failed for workspace `%s`; evaluating partial output.",
+            self._phase_log_prefix(),
+            self.workspace.name,
+            exc_info=exc,
+        )
+        self.optimize_log_tree = build_optimize_log_tree(self.workspace, self.optimize_rollouts)
+        self.optimize_log_tree["agent_error.txt"] = f"{type(exc).__name__}: {exc}\n"
+        self.boundary_result = self.solver_evaluator.check_boundary(
+            self.workspace,
+            solver_workspace_builder=self.solver_workspace_builder,
+        )
 
     def _build_prompt_specs(self) -> list[dict[str, object]]:
         if self.workspace is None:
@@ -301,7 +325,7 @@ class Phase2Runner:
         if self.workspace is None or self.optimizer is None:
             raise ValueError("Phase2Runner._finalize_result requires completed run state.")
         optimizer_log_tree = self.solver_workspace_builder.build_phase2_optimizer_log_tree(
-            run_id=self.step_label,
+            run_id=f"{self.step_label}_worker_{self.worker_index}",
             produced_solver=evaluation.entry,
             optimize_logs=self.optimize_log_tree,
             evaluate_logs=evaluation.evaluate_log_tree,
@@ -353,11 +377,38 @@ class Phase2Runner:
                 produced_solver.id,
             )
             return None
+        logs = self._produced_optimizer_logs(
+            optimizer_log_tree,
+            produced_solver=produced_solver,
+        )
         return PopulationEntry(
             id=PopulationEntry.make_id("optimizer"),
             files=optimizer_files,
             score=deepcopy(self.optimizer.score if self.optimizer is not None else {}),
-            logs=optimizer_log_tree,
+            logs=logs,
+        )
+
+    def _produced_optimizer_logs(
+        self,
+        optimizer_log_tree: dict[str, str],
+        *,
+        produced_solver: PopulationEntry,
+    ) -> dict[str, str]:
+        inheritance = str(self.solver_workspace_builder.config.optimizer_log_inheritance)
+        if inheritance == "no":
+            return {}
+        if inheritance == "parent":
+            return optimizer_log_tree
+        if inheritance == "current":
+            current_step_root = f"{self.step_label}_worker_{self.worker_index}_{produced_solver.id}"
+            return {
+                path: content
+                for path, content in optimizer_log_tree.items()
+                if path.split("/", 1)[0] == current_step_root
+            }
+        raise ValueError(
+            "loop.optimizer_log_inheritance must be one of `no`, `current`, or `parent`, "
+            f"got {inheritance!r}."
         )
 
     def _update_optimizer_logs(self, result: Phase2Result) -> None:
@@ -423,6 +474,7 @@ class Phase2BatchRunner:
         solver_pop: object,
         optimizer_pop: object,
         n_workers_phase2: int,
+        n_parallel_phase2: int,
         n_solver_examples_phase2: int,
         n_optimizer_examples_phase2: int,
         exclude_all_working_optimizers_from_examples: bool,
@@ -442,6 +494,7 @@ class Phase2BatchRunner:
         self.solver_pop = solver_pop
         self.optimizer_pop = optimizer_pop
         self.n_workers_phase2 = n_workers_phase2
+        self.n_parallel_phase2 = n_parallel_phase2
         self.n_solver_examples_phase2 = n_solver_examples_phase2
         self.n_optimizer_examples_phase2 = n_optimizer_examples_phase2
         self.exclude_all_working_optimizers_from_examples = (
@@ -462,7 +515,7 @@ class Phase2BatchRunner:
             return []
         shared_optimizer_examples = self._sample_shared_optimizer_examples(optimizers)
         results: list[Phase2Result] = []
-        with ThreadPoolExecutor(max_workers=len(optimizers)) as pool:
+        with ThreadPoolExecutor(max_workers=min(len(optimizers), self.n_parallel_phase2)) as pool:
             future_to_optimizer = {
                 pool.submit(
                     Phase2Runner(

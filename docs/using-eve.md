@@ -48,10 +48,10 @@ Read locally: the lineage DBs (table `eve_population_entries`), `runner.log`, `a
 These are bare commands; for the real procedures use the skills above.
 
 - **Launch (smoke first):** `uv run python -m scaling_evolve.algorithms.eve.runner --config-name=<task>.smoke`, then `--config-name=<task>` for the full run. The repo ships `circle_packing` as the reference testbed.
-- **Run detached:** `codex_max` and `codex_smoke` are headless by default. Only use `open_iterm2` when you intentionally switch to a tmux backend; see `docs/skills/configure-eve-driver/SKILL.md`.
+- **Run detached:** `codex_max`, `codex_smoke`, `opencode_max`, and `opencode_smoke` are headless. Only use `open_iterm2` when you intentionally switch to a tmux backend; see `docs/skills/configure-eve-driver/SKILL.md`.
 - **Quick status:** `grep -c "Phase 3: updated Elo" <run_root>/runner.log` is a fast operational check; for the logical completed-iteration count, read `checkpoint.json` and `telemetry/iteration_metrics.csv`. For scores, rank the flat score artifacts `<run_root>/artifacts/*_solver/state/*_score.yaml` (one per entry, named `<entry_id>_score.yaml`) — best/latest selection (via `eve_population_entries.created_at`) is in `docs/skills/inspect-population/SKILL.md`.
 - **Manage disk:** run roots grow (`solver_workspaces/`, `evaluation_workspaces/`, `artifacts/`, `.snapshots/`, `.resume_archive/`); prune or archive stale `.runs/eve/...` dirs you no longer need. Snapshot retention is config-controlled (see the `loop` config).
-- **Common config knobs** (Hydra overrides; see the config files and `docs/skills/configure-eve-driver/SKILL.md` for the full driver surface): `loop.max_iterations`, `loop.n_workers_phase2`, driver `model` / `reasoning_effort`, `logger=many_loggers logger.wandb.enabled=false` (run without wandb).
+- **Common config knobs** (Hydra overrides; see the config files and `docs/skills/configure-eve-driver/SKILL.md` for the full driver surface): `loop.max_iterations`, `loop.n_workers_phase2`, `loop.n_parallel_phase2`, driver `model`, Codex `reasoning_effort`, OpenCode `variant`, `logger=many_loggers logger.wandb.enabled=false` (run without wandb).
 
 ## Code layout
 
