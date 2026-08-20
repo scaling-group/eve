@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import signal
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -106,6 +107,99 @@ def test_runner_closes_drivers_when_logger_instantiate_fails(monkeypatch, tmp_pa
 
     assert close_called is True
     assert run_root.exists()
+
+
+@pytest.mark.parametrize("abort_signal", [signal.SIGINT, signal.SIGTERM, signal.SIGHUP])
+@pytest.mark.parametrize("cleanup_raises", [False, True])
+def test_runner_signal_handler_disarms_and_exits(
+    monkeypatch, tmp_path: Path, *, abort_signal: int, cleanup_raises: bool
+) -> None:
+    events: list[str] = []
+    handlers: dict[int, object] = {}
+
+    class _AbortExit(Exception):
+        pass
+
+    class _FakeDrivers:
+        def __init__(self) -> None:
+            self.eval_driver_factory = lambda: None
+            self.solver_driver = object()
+
+        def close(self) -> None:
+            events.append("close drivers")
+
+    class _FakeFactory:
+        loop = SimpleNamespace(
+            solver_pop=SimpleNamespace(entries=lambda: [], size=lambda: 0),
+            optimizer_pop=SimpleNamespace(entries=lambda: [], size=lambda: 0),
+            iterations_completed=0,
+        )
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb) -> None:
+            _ = (exc_type, exc, tb)
+
+        def seed_initial_guidance(self, *, search_root: Path) -> None:
+            _ = search_root
+
+        def run(self, *, start_iteration: int = 0) -> None:
+            _ = start_iteration
+            handler = handlers[abort_signal]
+            assert callable(handler)
+            handler(abort_signal, None)
+
+    cfg = _make_cfg(tmp_path / "artifacts")
+    monkeypatch.setattr(runner_module, "load_dotenv", lambda: None)
+    monkeypatch.setattr(runner_module, "write_repo_codex_hooks", lambda repo_root: None)
+    monkeypatch.setattr(runner_module, "ensure_codex_hooks_trusted", lambda repo_root: None)
+    monkeypatch.setattr(runner_module.atexit, "register", lambda function: None)
+    monkeypatch.setattr(
+        runner_module.signal,
+        "signal",
+        lambda signum, handler: handlers.__setitem__(signum, handler),
+    )
+    monkeypatch.setattr(
+        runner_module.RepoTaskProblem,
+        "from_config",
+        classmethod(
+            lambda cls, application, cache_root, search_root: SimpleNamespace(slug="fake-problem")
+        ),
+    )
+    monkeypatch.setattr(runner_module, "build_role_drivers", lambda *args, **kwargs: _FakeDrivers())
+    monkeypatch.setattr(runner_module, "build_evaluation_plan", lambda *args, **kwargs: object())
+    monkeypatch.setattr(runner_module, "build_solver_evaluator", lambda *args, **kwargs: object())
+    monkeypatch.setattr(
+        runner_module.EveFactory,
+        "from_config",
+        classmethod(lambda cls, *args, **kwargs: _FakeFactory()),
+    )
+
+    def _kill_process_trees() -> None:
+        events.append("kill process trees")
+        assert handlers[signal.SIGTERM] is signal.SIG_IGN
+        assert handlers[signal.SIGINT] is signal.SIG_IGN
+        assert handlers[signal.SIGHUP] is signal.SIG_IGN
+        if cleanup_raises:
+            raise RuntimeError("cleanup boom")
+
+    monkeypatch.setattr(runner_module, "kill_all_live_process_trees", _kill_process_trees)
+
+    def _exit(status: int) -> None:
+        events.append(f"exit {status}")
+        raise _AbortExit
+
+    monkeypatch.setattr(runner_module.os, "_exit", _exit)
+
+    with pytest.raises(_AbortExit):
+        runner_module.run(cfg)
+
+    exit_event = f"exit {128 + abort_signal}"
+    if cleanup_raises:
+        assert events[:3] == ["kill process trees", exit_event, "close drivers"]
+    else:
+        assert events[:3] == ["kill process trees", "close drivers", exit_event]
 
 
 def test_runner_instantiates_logger_non_recursively(monkeypatch, tmp_path: Path) -> None:

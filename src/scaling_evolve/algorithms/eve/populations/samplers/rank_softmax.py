@@ -14,8 +14,12 @@ sampling:
         temperature: 1.0
   optimizer_examples:
     _target_:
-      scaling_evolve.algorithms.eve.populations.samplers.rank_softmax.RankSoftmaxSampler
-    temperature: 1.0
+      scaling_evolve.algorithms.eve.populations.samplers.optimizer_examples.PerWorkerExcludeAllWorkingSampler
+    base_sampler:
+      _target_:
+        scaling_evolve.algorithms.eve.populations.samplers.rank_softmax.RankSoftmaxSampler
+      temperature: 1.0
+      replacement_mode: no_replacement
 ```
 
 Supported samplers in this file:

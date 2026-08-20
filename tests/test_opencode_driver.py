@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -136,7 +137,12 @@ def test_opencode_spawn_and_exact_resume_collect_cumulative_transcript(
     workspace_instructions.write_text("Use only EvE workspace instructions.\n", encoding="utf-8")
     system_prompt = tmp_path / "SYSTEM_PROMPT.md"
     system_prompt.write_text("Use the project workflow.\n", encoding="utf-8")
+    shared_npm_cache = tmp_path / "shared-npm-cache"
+    shared_xdg_cache = tmp_path / "shared-xdg-cache"
+    monkeypatch.setenv("NPM_CONFIG_CACHE", str(shared_npm_cache))
+    monkeypatch.setenv("XDG_CACHE_HOME", str(shared_xdg_cache))
     launches: list[list[str]] = []
+    runtime_homes: list[Path] = []
 
     def fake_run(self, *, command, cwd, env, stdout_live_path):  # noqa: ANN001
         launches.append(command)
@@ -155,19 +161,27 @@ def test_opencode_spawn_and_exact_resume_collect_cumulative_transcript(
         assert env["OPENCODE_AUTO_SHARE"] == "false"
         assert env["DEEPSEEK_API_KEY"] == "not-a-real-key"
         runtime_root = worktree / ".opencode-driver-transcripts"
-        home_root = runtime_root / "home"
-        config_root = runtime_root / "config"
-        assert env["HOME"] == str(home_root)
+        home_root = Path(env["HOME"])
+        assert home_root.parent == driver.run_root
+        config_root = home_root / ".config" / "opencode"
         assert env["OPENCODE_CONFIG"] == str(config_root / "opencode.json")
         assert env["OPENCODE_CONFIG_DIR"] == str(config_root)
+        assert env["NPM_CONFIG_CACHE"] == str(shared_npm_cache)
         assert env["OPENCODE_DB"] == str(runtime_root / "opencode.db")
         assert env["OPENCODE_DISABLE_EXTERNAL_SKILLS"] == "true"
         assert env["OPENCODE_DISABLE_PROJECT_CONFIG"] == "true"
-        assert env["XDG_CACHE_HOME"] == str(home_root / ".cache")
+        assert env["XDG_CACHE_HOME"] == str(shared_xdg_cache)
         assert env["XDG_CONFIG_HOME"] == str(home_root / ".config")
         assert env["XDG_DATA_HOME"] == str(home_root / ".local" / "share")
         assert env["XDG_STATE_HOME"] == str(home_root / ".local" / "state")
         assert (config_root / "opencode.json").read_text(encoding="utf-8") == "{}\n"
+        assert (config_root / "agents" / "eve-agent.md").read_text(encoding="utf-8") == (
+            "Eve agent\n"
+        )
+        runtime_homes.append(home_root)
+        residue = home_root / ".future-opencode-cache" / "new-version" / "payload"
+        residue.parent.mkdir(parents=True)
+        residue.write_text("cache\n", encoding="utf-8")
         summary = "Spawn finished." if len(launches) == 1 else "Resume finished."
         stdout = _successful_stream("ses_resume", summary)
         stdout_live_path.parent.mkdir(parents=True, exist_ok=True)
@@ -195,6 +209,9 @@ def test_opencode_spawn_and_exact_resume_collect_cumulative_transcript(
             ),
         },
     )
+    projected_agent = driver.workspace_config_dir(worktree) / "agents" / "eve-agent.md"
+    projected_agent.parent.mkdir(parents=True)
+    projected_agent.write_text("Eve agent\n", encoding="utf-8")
 
     spawned = driver.spawn(SessionSeed(instruction="Do the task", workspace=_lease(worktree)))
     resumed = driver.resume(spawned.state, instruction="Continue the task")
@@ -246,6 +263,8 @@ def test_opencode_spawn_and_exact_resume_collect_cumulative_transcript(
     assert "Resume finished." in transcript_text
     assert Path(resumed.state.metadata["diff_path"]).exists()
     assert Path(resumed.state.metadata["completion_path"]).exists()
+    assert len(runtime_homes) == 2
+    assert all(not home.exists() for home in runtime_homes)
 
 
 @pytest.mark.parametrize(
@@ -369,19 +388,78 @@ def test_opencode_nonzero_exit_and_timeout_are_fatal(monkeypatch, tmp_path: Path
     _init_git_repo(worktree)
     driver = OpenCodeSessionDriver(run_root=tmp_path / "run-root", timeout_seconds=0.1)
 
+    runtime_homes: list[Path] = []
+
+    def leave_runtime_residue(env) -> None:  # noqa: ANN001
+        home_root = Path(env["HOME"])
+        runtime_homes.append(home_root)
+        (home_root / ".future-opencode-cache").mkdir()
+
     def failed(self, *, command, cwd, env, stdout_live_path):  # noqa: ANN001
+        leave_runtime_residue(env)
         return subprocess.CompletedProcess(command, 2, "", "provider failed")
 
     monkeypatch.setattr(OpenCodeSessionDriver, "_run_command", failed)
     with pytest.raises(RuntimeError, match="OpenCode run failed"):
         driver.spawn(SessionSeed(instruction="Do it", workspace=_lease(worktree)))
+    assert not runtime_homes[-1].exists()
 
     def timed_out(self, *, command, cwd, env, stdout_live_path):  # noqa: ANN001
+        leave_runtime_residue(env)
         raise subprocess.TimeoutExpired(command, 0.1, output="partial", stderr="slow")
 
     monkeypatch.setattr(OpenCodeSessionDriver, "_run_command", timed_out)
     with pytest.raises(RuntimeError, match="OpenCode run timed out"):
         driver.spawn(SessionSeed(instruction="Do it", workspace=_lease(worktree)))
+    assert not runtime_homes[-1].exists()
+
+
+def test_opencode_rollout_env_projects_stored_auth_only_without_explicit_credentials(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    source_data_root = tmp_path / "host-data"
+    source_auth = source_data_root / "opencode" / "auth.json"
+    source_auth.parent.mkdir(parents=True)
+    source_auth.write_text("stored credential\n", encoding="utf-8")
+    (source_auth.parent / "session.json").write_text("host state\n", encoding="utf-8")
+    monkeypatch.setenv("XDG_DATA_HOME", str(source_data_root))
+    driver = OpenCodeSessionDriver(run_root=tmp_path / "run-root")
+
+    rollout_env = driver._rollout_env(
+        tmp_path / "workspace",
+        home_root=tmp_path / "runtime-home",
+    )
+
+    isolated_data_root = Path(rollout_env["XDG_DATA_HOME"])
+    isolated_auth = isolated_data_root / "opencode" / "auth.json"
+    assert isolated_auth.is_symlink()
+    assert isolated_auth.resolve() == source_auth.resolve()
+    assert not (isolated_data_root / "opencode" / "session.json").exists()
+    isolated_auth.unlink()
+    assert source_auth.read_text(encoding="utf-8") == "stored credential\n"
+
+    explicit_driver = OpenCodeSessionDriver(
+        run_root=tmp_path / "explicit-run-root",
+        provider_env={"DEEPSEEK_API_KEY": "explicit credential"},
+    )
+    explicit_env = explicit_driver._rollout_env(
+        tmp_path / "explicit-workspace",
+        home_root=tmp_path / "explicit-runtime-home",
+    )
+    explicit_auth = Path(explicit_env["XDG_DATA_HOME"]) / "opencode" / "auth.json"
+    assert explicit_env["DEEPSEEK_API_KEY"] == "explicit credential"
+    assert not explicit_auth.exists()
+    assert not explicit_auth.is_symlink()
+
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "missing-host-data"))
+    missing_env = driver._rollout_env(
+        tmp_path / "missing-workspace",
+        home_root=tmp_path / "missing-runtime-home",
+    )
+    missing_auth = Path(missing_env["XDG_DATA_HOME"]) / "opencode" / "auth.json"
+    assert not missing_auth.exists()
+    assert not missing_auth.is_symlink()
 
 
 def test_opencode_config_and_factory_use_backend_defaults(
@@ -437,9 +515,13 @@ def test_opencode_config_and_factory_use_backend_defaults(
     assert driver.provider_env == {"DEEPSEEK_API_KEY": "test-key"}
     assert driver.token_pricing is not None
     assert driver.token_pricing.input_per_million == pytest.approx(0.25)
-    rollout_env = driver._rollout_env(tmp_path / "workspace")
-    assert "permission" not in json.loads(rollout_env["OPENCODE_CONFIG_CONTENT"])
-    assert rollout_env["OPENCODE_CONFIG"] != os.environ["OPENCODE_CONFIG"]
+    with tempfile.TemporaryDirectory(prefix="scaling-evolve-opencode-test-") as home_root:
+        rollout_env = driver._rollout_env(
+            tmp_path / "workspace",
+            home_root=Path(home_root),
+        )
+        assert "permission" not in json.loads(rollout_env["OPENCODE_CONFIG_CONTENT"])
+        assert rollout_env["OPENCODE_CONFIG"] != os.environ["OPENCODE_CONFIG"]
 
 
 def test_driver_specific_options_are_rejected(tmp_path: Path) -> None:
@@ -539,16 +621,17 @@ def test_opencode_live_spawn_and_exact_resume(tmp_path: Path) -> None:
         timeout_seconds=300,
     )
     install_workspace_runtime_hooks(worktree, driver=driver, prompt_specs=[])
-    debug_env = os.environ.copy()
-    debug_env.update(driver._rollout_env(worktree))
-    debug = subprocess.run(
-        [driver.executable, "debug", "skill"],
-        cwd=worktree,
-        env=debug_env,
-        check=True,
-        capture_output=True,
-        text=True,
-    )
+    with tempfile.TemporaryDirectory(prefix="scaling-evolve-opencode-test-") as home_root:
+        debug_env = os.environ.copy()
+        debug_env.update(driver._rollout_env(worktree, home_root=Path(home_root)))
+        debug = subprocess.run(
+            [driver.executable, "debug", "skill"],
+            cwd=worktree,
+            env=debug_env,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
     skill_names = {item["name"] for item in json.loads(debug.stdout)}
     assert "eve-only" in skill_names
     assert "outer-only" not in skill_names
@@ -574,3 +657,6 @@ def test_opencode_live_spawn_and_exact_resume(tmp_path: Path) -> None:
     assert resumed.changed_paths == ["candidate.py"]
     transcript = Path(resumed.state.metadata["provider_transcript_path"])
     assert transcript.read_text(encoding="utf-8").count('"type": "eve.rollout"') == 2
+    runtime_root = worktree / ".opencode-driver-transcripts"
+    assert not list(runtime_root.rglob("node_modules"))
+    assert not (runtime_root / "home").exists()

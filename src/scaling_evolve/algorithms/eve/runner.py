@@ -34,6 +34,7 @@ from scaling_evolve.providers.agent.codex_hooks import (
     ensure_codex_hooks_trusted,
     write_repo_codex_hooks,
 )
+from scaling_evolve.providers.agent.drivers._subprocess import kill_all_live_process_trees
 
 logging.basicConfig(
     level=logging.INFO,
@@ -41,6 +42,7 @@ logging.basicConfig(
 )
 _LOG = logging.getLogger(__name__)
 _CSV_LOGGER_TARGET = "scaling_evolve.algorithms.eve.logger.CSVEveLogger"
+_ABORT_SIGNALS = (signal.SIGTERM, signal.SIGINT, signal.SIGHUP)
 
 
 def build_run_id(ts: str, label: object = "") -> str:
@@ -182,11 +184,16 @@ def run(cfg: DictConfig) -> None:
             drivers.close()
 
     def _abort_on_signal(sig: int, _frame: object) -> None:
-        _cleanup_drivers()
-        os._exit(128 + sig)
+        for abort_signal in _ABORT_SIGNALS:
+            signal.signal(abort_signal, signal.SIG_IGN)
+        try:
+            kill_all_live_process_trees()
+            _cleanup_drivers()
+        finally:
+            os._exit(128 + sig)
 
-    signal.signal(signal.SIGTERM, _abort_on_signal)
-    signal.signal(signal.SIGINT, _abort_on_signal)
+    for abort_signal in _ABORT_SIGNALS:
+        signal.signal(abort_signal, _abort_on_signal)
     atexit.register(_cleanup_drivers)
 
     try:

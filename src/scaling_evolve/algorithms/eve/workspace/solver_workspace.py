@@ -5,7 +5,7 @@ from __future__ import annotations
 import random
 import shutil
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import datetime
 from pathlib import Path
 
 import yaml
@@ -133,7 +133,7 @@ class SolverWorkspaceBuilder:
             (workspace_path, prefill_solver).
         """
         _ = worker_index
-        ts = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
         ws = self.workspace_root / f"{ts}_{workspace_id}"
         ws.mkdir(parents=True, exist_ok=True)
         optimizer_examples = optimizer_examples or []

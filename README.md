@@ -2,7 +2,7 @@
 
 <img src=".github/assets/eve-banner.png" width="600">
 
-# EvE: Evolutionary Ensemble of Agents
+# EvE: Evolving Ensemble of Agents
 
 [![python](https://img.shields.io/badge/-Python_%3E%3D3.11-blue?logo=python&logoColor=white)](https://www.python.org/)
 [![hydra](https://img.shields.io/badge/Config-Hydra_1.3-89b8cd)](https://hydra.cc/)
@@ -60,10 +60,15 @@ EvE then searches for strong solutions without requiring a task-specific workflo
 
     uv sync
 
-2.  **Agent authentication.** The current public release uses
-    [**Codex**](https://github.com/openai/codex) as the default agent backend.
-    Install Codex and configure
+2.  **Agent authentication.** [**Codex**](https://github.com/openai/codex) is the
+    default backend. Install it and configure
     [Codex authentication](https://developers.openai.com/codex/auth).
+
+    [**OpenCode**](https://opencode.ai/) supports either credentials saved by
+    [`opencode auth login`](https://opencode.ai/docs/cli/#auth) or an API key
+    declared through `driver.model_providers.<provider>.env_key`. An explicitly
+    configured environment credential takes precedence over saved OpenCode auth.
+    See the `configure-eve-driver` skill for driver-specific details.
 
 3.  **Hook trust (for Codex >= 0.130.0).** EvE uses hooks for workspace
     sandboxing and budget prompts. Run once per machine from the repository root
@@ -125,7 +130,7 @@ during future iterations, with concrete scores that drive sampling probability.
 
 The formal procedure is given in the algorithm below.
 
-<summary><b>Algorithm: Evolutionary Ensemble of Agents</b></summary>
+<summary><b>Algorithm: Evolving Ensemble of Agents</b></summary>
 <br>
 <p align="center">
   <img src=".github/assets/eve-algorithm.png" width="560">
@@ -320,7 +325,7 @@ Please cite our paper if you use EvE in your research:
 
 ```bibtex
 @article{yu2026eve,
-  title         = {Evolutionary Ensemble of Agents},
+  title         = {Evolving Ensemble of Agents},
   author        = {Yu, Zongmin and Yang, Liu},
   year          = {2026},
   url           = {https://arxiv.org/abs/2605.09018},

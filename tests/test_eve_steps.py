@@ -21,6 +21,13 @@ from scaling_evolve.algorithms.eve.populations.evaluators.elo import (
     ScalarEloEvaluator,
     VectorEloEvaluator,
 )
+from scaling_evolve.algorithms.eve.populations.samplers.optimizer_examples import (
+    JointOptimizerExampleSampler,
+    PerWorkerExcludeAllWorkingSampler,
+    PerWorkerExcludeSelfSampler,
+    SharedCandidatesExcludeSelfSampler,
+    SharedExcludeAllWorkingSampler,
+)
 from scaling_evolve.algorithms.eve.populations.samplers.rank_softmax import (
     EvalRankSoftmaxSampler,
     RankExponentialSumSampler,
@@ -107,6 +114,7 @@ def _solver_workspace_builder_kwargs(config: DictConfig) -> dict[str, object]:
 def _make_test_config(workspace_root: Path | str = "run", **overrides) -> DictConfig:
     """Build a test DictConfig with defaults matching loop/default.yaml."""
     _S = "scaling_evolve.algorithms.eve"
+    _OE = f"{_S}.populations.samplers.optimizer_examples"
     _RS = f"{_S}.populations.samplers.rank_softmax"
     _US = f"{_S}.populations.samplers.uniform"
     cfg = {
@@ -115,7 +123,6 @@ def _make_test_config(workspace_root: Path | str = "run", **overrides) -> DictCo
         "n_parallel_phase2": 2,
         "n_solver_examples_phase2": 4,
         "n_optimizer_examples_phase2": 4,
-        "exclude_all_working_optimizers_from_examples": False,
         "boundary_repair_attempts": 3,
         "enable_resume": True,
         "retain_workspaces": True,
@@ -139,9 +146,12 @@ def _make_test_config(workspace_root: Path | str = "run", **overrides) -> DictCo
                 "replacement_mode": "no_replacement",
             },
             "optimizer_examples": {
-                "_target_": f"{_RS}.RankSoftmaxSampler",
-                "temperature": 1.0,
-                "replacement_mode": "no_replacement",
+                "_target_": f"{_OE}.PerWorkerExcludeAllWorkingSampler",
+                "base_sampler": {
+                    "_target_": f"{_RS}.RankSoftmaxSampler",
+                    "temperature": 1.0,
+                    "replacement_mode": "no_replacement",
+                },
             },
             "produced_optimizers": {
                 "_target_": f"{_RS}.RankExponentialSumSampler",
@@ -469,7 +479,9 @@ def _make_loop(
         phase2_optimizer_sampler=UniformSampler(replacement_mode="no_replacement"),
         phase2_solver_sampler=UniformSampler(replacement_mode="no_replacement"),
         phase2_prefill_sampler=UniformSampler(replacement_mode="no_replacement"),
-        phase2_optimizer_examples_sampler=UniformSampler(replacement_mode="no_replacement"),
+        phase2_optimizer_examples_sampler=PerWorkerExcludeAllWorkingSampler(
+            base_sampler=UniformSampler(replacement_mode="no_replacement")
+        ),
         phase2_produced_optimizer_sampler=UniformSampler(replacement_mode="no_replacement"),
     )
     return loop, solver_pop
@@ -1286,7 +1298,6 @@ def test_phase2_batch_adds_agent_error_evaluated_partial_solver(tmp_path: Path) 
         n_parallel_phase2=1,
         n_solver_examples_phase2=1,
         n_optimizer_examples_phase2=0,
-        exclude_all_working_optimizers_from_examples=False,
         n_produced_optimizers_phase2=0,
         optimizer_sampler=_HeadSampler(),
         solver_sampler=_HeadSampler(),
@@ -1382,7 +1393,6 @@ def test_phase2_batch_evaluates_prefill_when_agent_fails_before_edits(tmp_path: 
         n_parallel_phase2=1,
         n_solver_examples_phase2=1,
         n_optimizer_examples_phase2=0,
-        exclude_all_working_optimizers_from_examples=False,
         n_produced_optimizers_phase2=0,
         optimizer_sampler=_HeadSampler(),
         solver_sampler=_HeadSampler(),
@@ -1465,59 +1475,6 @@ def test_phase2_can_produce_optimizer_when_configured(tmp_path: Path) -> None:
     assert not (workspace / "score.yaml").exists()
 
 
-def test_phase2_parent_log_inheritance_keeps_full_optimizer_log_tree(tmp_path: Path) -> None:
-    problem = _make_problem(tmp_path)
-    driver = _FakeDriver()
-    driver.optimizer_guidance_update = {"APPROACH.md": "updated approach"}
-    config = _instantiate_test_instructions(
-        _make_test_config(
-            workspace_root=tmp_path / "run",
-            produce_optimizer_in_phase2=1,
-            optimizer_log_inheritance="parent",
-        )
-    )
-    solver_workspace_builder = SolverWorkspaceBuilder(
-        tmp_path / "solver_workspaces",
-        problem=problem,
-        config=config,
-        **_solver_workspace_builder_kwargs(config),
-    )
-    optimizer = PopulationEntry(
-        id="opt-1",
-        files={"APPROACH.md": "approach"},
-        score=_optimizer_score(1500.0),
-        logs={},
-    )
-    candidate = PopulationEntry(
-        id="solver_1",
-        files={"candidate.py": "print('seed')\n"},
-        score=_score(0.4),
-        logs={},
-    )
-
-    result = Phase2Runner(
-        solver_workspace_builder=solver_workspace_builder,
-        driver=driver,
-        solver_evaluator=_make_solver_evaluator(
-            problem,
-            eval_fn=lambda files, display_context=None, **kwargs: (
-                _score(1.0),
-                {"summary.txt": "evaluation summary"},
-            ),
-        ),
-        step_label="step_3",
-        iteration=3,
-    ).run_single(
-        optimizer=optimizer,
-        solvers=[candidate],
-        prefill_solver=candidate,
-        worker_index=1,
-    )
-
-    assert result.produced_optimizer is not None
-    assert result.produced_optimizer.logs == result.optimizer_log_tree
-
-
 def test_phase2_current_log_inheritance_keeps_only_current_worker_logs(tmp_path: Path) -> None:
     problem = _make_problem(tmp_path)
     driver = _FakeDriver()
@@ -1579,7 +1536,9 @@ def test_phase2_current_log_inheritance_keeps_only_current_worker_logs(tmp_path:
     }
 
 
-def test_phase2_no_log_inheritance_keeps_produced_optimizer_logs_empty(tmp_path: Path) -> None:
+def test_phase2_none_log_inheritance_keeps_produced_optimizer_logs_empty(
+    tmp_path: Path,
+) -> None:
     problem = _make_problem(tmp_path)
     driver = _FakeDriver()
     driver.optimizer_guidance_update = {"APPROACH.md": "updated approach"}
@@ -1587,7 +1546,7 @@ def test_phase2_no_log_inheritance_keeps_produced_optimizer_logs_empty(tmp_path:
         _make_test_config(
             workspace_root=tmp_path / "run",
             produce_optimizer_in_phase2=1,
-            optimizer_log_inheritance="no",
+            optimizer_log_inheritance="none",
         )
     )
     solver_workspace_builder = SolverWorkspaceBuilder(
@@ -1631,6 +1590,14 @@ def test_phase2_no_log_inheritance_keeps_produced_optimizer_logs_empty(tmp_path:
     assert result.produced_optimizer is not None
     assert result.produced_optimizer.logs == {}
     assert result.optimizer_log_tree
+
+
+def test_optimizer_log_inheritance_none_survives_yaml(tmp_path: Path) -> None:
+    cfg_path = tmp_path / "loop.yaml"
+    cfg_path.write_text("optimizer_log_inheritance: none\n", encoding="utf-8")
+    cfg = OmegaConf.load(cfg_path)
+    assert cfg.optimizer_log_inheritance == "none"
+    assert isinstance(cfg.optimizer_log_inheritance, str)
 
 
 def test_phase2_skips_optimizer_candidate_when_guidance_is_unchanged(
@@ -1766,7 +1733,6 @@ def test_phase2_batch_adds_configured_optimizer_candidate(tmp_path: Path) -> Non
         n_parallel_phase2=1,
         n_solver_examples_phase2=1,
         n_optimizer_examples_phase2=0,
-        exclude_all_working_optimizers_from_examples=False,
         n_produced_optimizers_phase2=1,
         optimizer_sampler=_HeadSampler(),
         solver_sampler=_HeadSampler(),
@@ -1833,7 +1799,7 @@ def test_phase2_workspace_uses_optimizer_examples_when_enabled(tmp_path: Path) -
     assert not (workspace / "score.yaml").exists()
 
 
-def test_phase2_batch_reuses_same_optimizer_examples_for_all_workers(
+def test_phase2_batch_samples_optimizer_examples_per_worker_after_excluding_all_working(
     tmp_path: Path, monkeypatch
 ) -> None:
     class _Population:
@@ -1865,7 +1831,8 @@ def test_phase2_batch_reuses_same_optimizer_examples_for_all_workers(
             _ = rng
             entry_ids = [entry.id for entry in entries]
             self.calls.append(entry_ids)
-            return list(entries[:n])
+            ordered_entries = entries if len(self.calls) == 1 else list(reversed(entries))
+            return list(ordered_entries[:n])
 
     problem = _make_problem(tmp_path)
     config = _instantiate_test_instructions(
@@ -1920,13 +1887,13 @@ def test_phase2_batch_reuses_same_optimizer_examples_for_all_workers(
             ),
         ]
     )
-    optimizer_examples_seen: list[list[str]] = []
+    optimizer_examples_seen: dict[int, list[str]] = {}
 
     def _fake_run_single(
         self, *, optimizer, solvers, optimizer_examples, prefill_solver, worker_index
     ):
-        _ = (self, solvers, prefill_solver, worker_index)
-        optimizer_examples_seen.append([entry.id for entry in optimizer_examples])
+        _ = (self, solvers, prefill_solver)
+        optimizer_examples_seen[worker_index] = [entry.id for entry in optimizer_examples]
         return Phase2Result(optimizer=optimizer)
 
     optimizer_examples_sampler = _RecordingOptimizerExampleSampler()
@@ -1950,17 +1917,24 @@ def test_phase2_batch_reuses_same_optimizer_examples_for_all_workers(
         n_parallel_phase2=2,
         n_solver_examples_phase2=1,
         n_optimizer_examples_phase2=2,
-        exclude_all_working_optimizers_from_examples=True,
         n_produced_optimizers_phase2=0,
         optimizer_sampler=_HeadSampler(),
         solver_sampler=_HeadSampler(),
         prefill_sampler=_HeadSampler(),
-        optimizer_examples_sampler=optimizer_examples_sampler,
+        optimizer_examples_sampler=PerWorkerExcludeAllWorkingSampler(
+            base_sampler=optimizer_examples_sampler
+        ),
         produced_optimizer_sampler=_HeadSampler(),
     ).run()
 
-    assert optimizer_examples_sampler.calls == [["opt_3", "opt_4"]]
-    assert optimizer_examples_seen == [["opt_1", "opt_3"], ["opt_2", "opt_3"]]
+    assert optimizer_examples_sampler.calls == [
+        ["opt_3", "opt_4"],
+        ["opt_3", "opt_4"],
+    ]
+    assert optimizer_examples_seen == {
+        1: ["opt_1", "opt_3"],
+        2: ["opt_2", "opt_4"],
+    }
 
 
 def test_phase2_batch_limits_parallelism_independently_from_worker_count(
@@ -2069,7 +2043,6 @@ def test_phase2_batch_limits_parallelism_independently_from_worker_count(
         n_workers_phase2=5,
         n_solver_examples_phase2=1,
         n_optimizer_examples_phase2=0,
-        exclude_all_working_optimizers_from_examples=False,
         n_produced_optimizers_phase2=0,
         optimizer_sampler=_HeadSampler(),
         solver_sampler=_HeadSampler(),
@@ -2084,7 +2057,7 @@ def test_phase2_batch_limits_parallelism_independently_from_worker_count(
     assert len(solver_pop.entries()) == 6
 
 
-def test_phase2_batch_can_sample_optimizer_examples_from_working_optimizers(
+def test_phase2_batch_samples_per_worker_examples_without_self_duplicates(
     tmp_path: Path, monkeypatch
 ) -> None:
     class _Population:
@@ -2124,7 +2097,7 @@ def test_phase2_batch_can_sample_optimizer_examples_from_working_optimizers(
             workspace_root=tmp_path / "run",
             n_workers_phase2=2,
             n_solver_examples_phase2=1,
-            n_optimizer_examples_phase2=2,
+            n_optimizer_examples_phase2=4,
         )
     )
     solver_workspace_builder = SolverWorkspaceBuilder(
@@ -2165,13 +2138,13 @@ def test_phase2_batch_can_sample_optimizer_examples_from_working_optimizers(
             ),
         ]
     )
-    optimizer_examples_seen: list[list[str]] = []
+    optimizer_examples_seen: dict[int, list[str]] = {}
 
     def _fake_run_single(
         self, *, optimizer, solvers, optimizer_examples, prefill_solver, worker_index
     ):
         _ = (self, solvers, prefill_solver, worker_index)
-        optimizer_examples_seen.append([entry.id for entry in optimizer_examples])
+        optimizer_examples_seen[worker_index] = [entry.id for entry in optimizer_examples]
         return Phase2Result(optimizer=optimizer)
 
     optimizer_examples_sampler = _RecordingOptimizerExampleSampler()
@@ -2194,18 +2167,151 @@ def test_phase2_batch_can_sample_optimizer_examples_from_working_optimizers(
         n_workers_phase2=2,
         n_parallel_phase2=2,
         n_solver_examples_phase2=1,
-        n_optimizer_examples_phase2=2,
-        exclude_all_working_optimizers_from_examples=False,
+        n_optimizer_examples_phase2=4,
         n_produced_optimizers_phase2=0,
         optimizer_sampler=_HeadSampler(),
         solver_sampler=_HeadSampler(),
         prefill_sampler=_HeadSampler(),
-        optimizer_examples_sampler=optimizer_examples_sampler,
+        optimizer_examples_sampler=PerWorkerExcludeSelfSampler(
+            base_sampler=optimizer_examples_sampler
+        ),
         produced_optimizer_sampler=_HeadSampler(),
     ).run()
 
-    assert optimizer_examples_sampler.calls == [["opt_1", "opt_2", "opt_3"]]
-    assert optimizer_examples_seen == [["opt_1", "opt_1"], ["opt_2", "opt_1"]]
+    assert optimizer_examples_sampler.calls == [
+        ["opt_2", "opt_3"],
+        ["opt_1", "opt_3"],
+    ]
+    assert optimizer_examples_seen == {
+        1: ["opt_1", "opt_2", "opt_3"],
+        2: ["opt_2", "opt_1", "opt_3"],
+    }
+
+
+@pytest.mark.parametrize(
+    ("sampler_type", "expected_calls", "expected_examples"),
+    [
+        (
+            SharedExcludeAllWorkingSampler,
+            [(["opt_3", "opt_4", "opt_5", "opt_6"], 2)],
+            [["opt_3", "opt_4"], ["opt_3", "opt_4"]],
+        ),
+        (
+            PerWorkerExcludeAllWorkingSampler,
+            [
+                (["opt_3", "opt_4", "opt_5", "opt_6"], 2),
+                (["opt_3", "opt_4", "opt_5", "opt_6"], 2),
+            ],
+            [["opt_3", "opt_4"], ["opt_4", "opt_5"]],
+        ),
+        (
+            PerWorkerExcludeSelfSampler,
+            [
+                (["opt_2", "opt_3", "opt_4", "opt_5", "opt_6"], 2),
+                (["opt_1", "opt_3", "opt_4", "opt_5", "opt_6"], 2),
+            ],
+            [["opt_2", "opt_3"], ["opt_3", "opt_4"]],
+        ),
+        (
+            SharedCandidatesExcludeSelfSampler,
+            [(["opt_1", "opt_2", "opt_3", "opt_4", "opt_5", "opt_6"], 3)],
+            [["opt_2", "opt_3"], ["opt_1", "opt_3"]],
+        ),
+    ],
+)
+def test_joint_optimizer_example_sampling_policies(
+    sampler_type: type[JointOptimizerExampleSampler],
+    expected_calls: list[tuple[list[str], int]],
+    expected_examples: list[list[str]],
+) -> None:
+    class _RecordingSampler:
+        def __init__(self) -> None:
+            self.calls: list[tuple[list[str], int]] = []
+
+        def sample(self, entries, scores, n, rng):  # noqa: ANN001, ARG002
+            _ = scores
+            _ = rng
+            offset = len(self.calls)
+            self.calls.append(([entry.id for entry in entries], n))
+            ordered_entries = [*entries[offset:], *entries[:offset]]
+            return ordered_entries[:n]
+
+    optimizers = [
+        PopulationEntry(
+            id=f"opt_{index}",
+            files={"APPROACH.md": f"opt{index}"},
+            score=_optimizer_score(1500.0 - index),
+            logs={},
+        )
+        for index in range(1, 7)
+    ]
+    base_sampler = _RecordingSampler()
+
+    examples = sampler_type(base_sampler=base_sampler).sample(
+        optimizers,
+        optimizers[:2],
+        2,
+        rng=random.Random(0),
+    )
+
+    assert base_sampler.calls == expected_calls
+    assert [[entry.id for entry in worker_examples] for worker_examples in examples] == (
+        expected_examples
+    )
+
+
+@pytest.mark.parametrize(
+    "sampler_type",
+    [
+        SharedExcludeAllWorkingSampler,
+        PerWorkerExcludeAllWorkingSampler,
+        PerWorkerExcludeSelfSampler,
+        SharedCandidatesExcludeSelfSampler,
+    ],
+)
+def test_phase2_joint_optimizer_example_sampling_is_deterministic(
+    sampler_type: type[JointOptimizerExampleSampler],
+) -> None:
+    class _Population:
+        def __init__(self, entries: list[PopulationEntry]) -> None:
+            self._entries = list(entries)
+            self._rng = random.Random(7)
+
+        def entries(self) -> list[PopulationEntry]:
+            return list(self._entries)
+
+    optimizers = [
+        PopulationEntry(
+            id=f"opt_{index}",
+            files={"APPROACH.md": f"opt{index}"},
+            score=_optimizer_score(1500.0 - index),
+            logs={},
+        )
+        for index in range(1, 5)
+    ]
+
+    def _sample() -> list[list[str]]:
+        runner = object.__new__(Phase2BatchRunner)
+        runner.n_optimizer_examples_phase2 = 3
+        runner.optimizer_pop = _Population(optimizers)
+        runner.optimizer_examples_sampler = sampler_type(
+            base_sampler=RankSoftmaxSampler(
+                temperature=1.0,
+                replacement_mode="no_replacement",
+            )
+        )
+        return [
+            [entry.id for entry in examples]
+            for examples in runner._build_optimizer_examples_by_worker(optimizers[:2])
+        ]
+
+    first = _sample()
+    assert first == _sample()
+    assert all(len(examples) == 3 for examples in first)
+    assert all(
+        examples.count(optimizer.id) == 1
+        for optimizer, examples in zip(optimizers[:2], first, strict=True)
+    )
 
 
 def test_phase2_batch_samples_produced_optimizers_when_configured(
@@ -2330,7 +2436,6 @@ def test_phase2_batch_samples_produced_optimizers_when_configured(
         n_parallel_phase2=2,
         n_solver_examples_phase2=1,
         n_optimizer_examples_phase2=0,
-        exclude_all_working_optimizers_from_examples=False,
         n_produced_optimizers_phase2=1,
         optimizer_sampler=_HeadSampler(),
         solver_sampler=_HeadSampler(),

@@ -12,7 +12,7 @@ import socket
 import subprocess
 import traceback
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -66,8 +66,8 @@ class OrchestratorConfig:
     task_name: str
 
 
-def timestamp_utc() -> str:
-    return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")  # noqa: UP017
+def timestamp_local() -> str:
+    return datetime.now().astimezone().replace(microsecond=0).isoformat()
 
 
 def load_meta(staging_dir: Path) -> dict[str, Any]:
@@ -466,7 +466,7 @@ def result_payload(*, task: str) -> dict[str, Any]:
         "task": task,
         "status": "unclear",
         "attempt_id": "",
-        "started_at": timestamp_utc(),
+        "started_at": timestamp_local(),
         "finished_at": None,
         "pbs_job_id": os.environ.get("PBS_JOBID", ""),
         "remote_worktree": "",
@@ -526,7 +526,7 @@ def main() -> int:
         }
     finally:
         cleanup_worktree(config)
-        result["finished_at"] = timestamp_utc()
+        result["finished_at"] = timestamp_local()
 
     try:
         write_result_json(result_path, result)
