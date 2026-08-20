@@ -12,6 +12,9 @@ from scaling_evolve.algorithms.eve.factory import EveFactory
 from scaling_evolve.algorithms.eve.populations.entry import PopulationEntry
 from scaling_evolve.algorithms.eve.populations.evaluators.elo import ScalarEloEvaluator
 from scaling_evolve.algorithms.eve.populations.optimizer_population import OptimizerPopulation
+from scaling_evolve.algorithms.eve.populations.samplers.optimizer_examples import (
+    PerWorkerExcludeAllWorkingSampler,
+)
 from scaling_evolve.algorithms.eve.populations.samplers.uniform import UniformSampler
 from scaling_evolve.algorithms.eve.populations.solver_population import SolverPopulation
 from scaling_evolve.algorithms.eve.runtime.resume import (
@@ -84,7 +87,6 @@ def _loop_config(run_root: Path, *, max_iterations: int, enable_resume: bool = T
             "n_parallel_phase2": 1,
             "n_solver_examples_phase2": 1,
             "n_optimizer_examples_phase2": 1,
-            "exclude_all_working_optimizers_from_examples": False,
             "boundary_repair_attempts": 0,
             "enable_resume": enable_resume,
             "produce_optimizer_in_phase2": 0,
@@ -147,7 +149,9 @@ def _make_stub_loop(
         phase2_optimizer_sampler=UniformSampler(replacement_mode="no_replacement"),
         phase2_solver_sampler=UniformSampler(replacement_mode="no_replacement"),
         phase2_prefill_sampler=UniformSampler(replacement_mode="no_replacement"),
-        phase2_optimizer_examples_sampler=UniformSampler(replacement_mode="no_replacement"),
+        phase2_optimizer_examples_sampler=PerWorkerExcludeAllWorkingSampler(
+            base_sampler=UniformSampler(replacement_mode="no_replacement")
+        ),
         phase2_produced_optimizer_sampler=UniformSampler(replacement_mode="no_replacement"),
     )
     return loop, solver_store, optimizer_store
@@ -243,7 +247,6 @@ def _factory_reload_config(
                 "n_parallel_phase2": 1,
                 "n_solver_examples_phase2": 1,
                 "n_optimizer_examples_phase2": 1,
-                "exclude_all_working_optimizers_from_examples": False,
                 "produce_optimizer_in_phase2": 0,
                 "boundary_repair_attempts": 0,
                 "enable_resume": True,
@@ -261,8 +264,14 @@ def _factory_reload_config(
                         "replacement_mode": "no_replacement",
                     },
                     "optimizer_examples": {
-                        "_target_": sampler_target,
-                        "replacement_mode": "no_replacement",
+                        "_target_": (
+                            "scaling_evolve.algorithms.eve.populations.samplers."
+                            "optimizer_examples.PerWorkerExcludeAllWorkingSampler"
+                        ),
+                        "base_sampler": {
+                            "_target_": sampler_target,
+                            "replacement_mode": "no_replacement",
+                        },
                     },
                     "produced_optimizers": {
                         "_target_": sampler_target,

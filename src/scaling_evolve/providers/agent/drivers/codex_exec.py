@@ -32,6 +32,11 @@ from scaling_evolve.providers.agent.drivers._metadata import (
     compute_cost,
     resolve_token_pricing,
 )
+from scaling_evolve.providers.agent.drivers._subprocess import (
+    kill_process_tree,
+    terminate_process_tree,
+    tracked_process_tree,
+)
 from scaling_evolve.providers.agent.drivers._transcript import archive_transcript
 from scaling_evolve.providers.agent.drivers._workspace import (
     changed_paths_from_tree,
@@ -492,67 +497,66 @@ class CodexExecSessionDriver(SessionDriver):
                 text=True,
                 bufsize=1,
                 env=process_env,
+                start_new_session=True,
             )
+            with tracked_process_tree(process):
 
-            def _stdout_worker() -> None:
-                if process.stdout is None:
-                    return
-                for line in process.stdout:
-                    stdout_handle.write(line)
-                    stdout_handle.flush()
-                    stdout_chunks.append(line)
-                    if (
-                        _record_exec_turn_from_stdout_line(line, observed_turns)
-                        >= self.rollout_max_turns
-                    ):
-                        if limit_reached.is_set():
-                            continue
-                        limit_reached.set()
-                        try:
-                            process.terminate()
-                        except ProcessLookupError:
-                            return
+                def _stdout_worker() -> None:
+                    if process.stdout is None:
+                        return
+                    for line in process.stdout:
+                        stdout_handle.write(line)
+                        stdout_handle.flush()
+                        stdout_chunks.append(line)
+                        if (
+                            _record_exec_turn_from_stdout_line(line, observed_turns)
+                            >= self.rollout_max_turns
+                        ):
+                            if limit_reached.is_set():
+                                continue
+                            limit_reached.set()
+                            terminate_process_tree(process)
 
-            def _stderr_worker() -> None:
-                if process.stderr is None:
-                    return
-                stderr_text = process.stderr.read()
-                if stderr_text:
-                    stderr_chunks.append(stderr_text)
+                def _stderr_worker() -> None:
+                    if process.stderr is None:
+                        return
+                    stderr_text = process.stderr.read()
+                    if stderr_text:
+                        stderr_chunks.append(stderr_text)
 
-            stdout_thread = threading.Thread(target=_stdout_worker, daemon=True)
-            stderr_thread = threading.Thread(target=_stderr_worker, daemon=True)
-            stdout_thread.start()
-            stderr_thread.start()
+                stdout_thread = threading.Thread(target=_stdout_worker, daemon=True)
+                stderr_thread = threading.Thread(target=_stderr_worker, daemon=True)
+                stdout_thread.start()
+                stderr_thread.start()
 
-            deadline = time.monotonic() + self.timeout_seconds
-            terminate_deadline: float | None = None
-            while process.poll() is None:
-                now = time.monotonic()
-                if limit_reached.is_set():
-                    if terminate_deadline is None:
-                        terminate_deadline = now + 1.0
-                    elif now >= terminate_deadline:
-                        process.kill()
-                if now >= deadline:
-                    process.kill()
-                    stdout_thread.join(timeout=1.0)
-                    stderr_thread.join(timeout=1.0)
-                    stdout_handle.flush()
-                    raise RuntimeError(
-                        self._format_timeout_failure(
-                            command=command,
-                            cwd=cwd,
-                            stdout_path=stdout_live_path,
-                            stderr_text="".join(stderr_chunks),
-                            timeout=self.timeout_seconds,
+                deadline = time.monotonic() + self.timeout_seconds
+                terminate_deadline: float | None = None
+                while process.poll() is None:
+                    now = time.monotonic()
+                    if limit_reached.is_set():
+                        if terminate_deadline is None:
+                            terminate_deadline = now + 1.0
+                        elif now >= terminate_deadline:
+                            kill_process_tree(process)
+                    if now >= deadline:
+                        kill_process_tree(process)
+                        stdout_thread.join(timeout=1.0)
+                        stderr_thread.join(timeout=1.0)
+                        stdout_handle.flush()
+                        raise RuntimeError(
+                            self._format_timeout_failure(
+                                command=command,
+                                cwd=cwd,
+                                stdout_path=stdout_live_path,
+                                stderr_text="".join(stderr_chunks),
+                                timeout=self.timeout_seconds,
+                            )
                         )
-                    )
-                time.sleep(0.05)
+                    time.sleep(0.05)
 
-            stdout_thread.join(timeout=1.0)
-            stderr_thread.join(timeout=1.0)
-            stdout_handle.flush()
+                stdout_thread.join(timeout=1.0)
+                stderr_thread.join(timeout=1.0)
+                stdout_handle.flush()
 
         completed = subprocess.CompletedProcess(
             args=command,

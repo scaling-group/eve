@@ -222,7 +222,7 @@ def _next_resume_archive_root(run_root: Path, *, anchor_iteration: int) -> Path:
         if not token.isdigit():
             continue
         next_index = max(next_index, int(token) + 1)
-    timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+    timestamp = datetime.now().strftime("%Y%m%dT%H%M%S")
     return archive_parent / f"resume_{next_index:04d}__anchor_{anchor_iteration}__{timestamp}"
 
 

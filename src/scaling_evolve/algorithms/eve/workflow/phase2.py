@@ -395,10 +395,8 @@ class Phase2Runner:
         produced_solver: PopulationEntry,
     ) -> dict[str, str]:
         inheritance = str(self.solver_workspace_builder.config.optimizer_log_inheritance)
-        if inheritance == "no":
+        if inheritance == "none":
             return {}
-        if inheritance == "parent":
-            return optimizer_log_tree
         if inheritance == "current":
             current_step_root = f"{self.step_label}_worker_{self.worker_index}_{produced_solver.id}"
             return {
@@ -407,8 +405,7 @@ class Phase2Runner:
                 if path.split("/", 1)[0] == current_step_root
             }
         raise ValueError(
-            "loop.optimizer_log_inheritance must be one of `no`, `current`, or `parent`, "
-            f"got {inheritance!r}."
+            f"loop.optimizer_log_inheritance must be `none` or `current`, got {inheritance!r}."
         )
 
     def _update_optimizer_logs(self, result: Phase2Result) -> None:
@@ -477,7 +474,6 @@ class Phase2BatchRunner:
         n_parallel_phase2: int,
         n_solver_examples_phase2: int,
         n_optimizer_examples_phase2: int,
-        exclude_all_working_optimizers_from_examples: bool,
         n_produced_optimizers_phase2: int,
         optimizer_sampler: object,
         solver_sampler: object,
@@ -497,9 +493,6 @@ class Phase2BatchRunner:
         self.n_parallel_phase2 = n_parallel_phase2
         self.n_solver_examples_phase2 = n_solver_examples_phase2
         self.n_optimizer_examples_phase2 = n_optimizer_examples_phase2
-        self.exclude_all_working_optimizers_from_examples = (
-            exclude_all_working_optimizers_from_examples
-        )
         self.n_produced_optimizers_phase2 = n_produced_optimizers_phase2
         self.optimizer_sampler = optimizer_sampler
         self.solver_sampler = solver_sampler
@@ -513,7 +506,7 @@ class Phase2BatchRunner:
         if not optimizers:
             _LOGGER.warning("Optimizer population is empty; skipping iteration.")
             return []
-        shared_optimizer_examples = self._sample_shared_optimizer_examples(optimizers)
+        optimizer_examples_by_worker = self._build_optimizer_examples_by_worker(optimizers)
         results: list[Phase2Result] = []
         with ThreadPoolExecutor(max_workers=min(len(optimizers), self.n_parallel_phase2)) as pool:
             future_to_optimizer = {
@@ -529,10 +522,7 @@ class Phase2BatchRunner:
                     ).run_single,
                     optimizer=optimizer,
                     solvers=solvers,
-                    optimizer_examples=self._build_worker_optimizer_examples(
-                        optimizer,
-                        shared_optimizer_examples,
-                    ),
+                    optimizer_examples=optimizer_examples_by_worker[worker_index - 1],
                     prefill_solver=self._sample_prefill_solver(solvers),
                     worker_index=worker_index,
                 ): optimizer
@@ -627,31 +617,37 @@ class Phase2BatchRunner:
         )
         return prefill_candidates[0] if prefill_candidates else None
 
-    def _sample_shared_optimizer_examples(
+    def _build_optimizer_examples_by_worker(
         self,
         selected_optimizers: list[PopulationEntry],
-    ) -> list[PopulationEntry]:
+    ) -> list[list[PopulationEntry]]:
+        """Build guidance lists using the configured joint sampling policy."""
         if self.n_optimizer_examples_phase2 <= 1:
-            return []
-        optimizer_entries = self.optimizer_pop.entries()
-        if self.exclude_all_working_optimizers_from_examples:
-            selected_ids = {entry.id for entry in selected_optimizers}
-            optimizer_entries = [
-                entry for entry in optimizer_entries if entry.id not in selected_ids
-            ]
-        return list(
-            self.optimizer_examples_sampler.sample(
-                optimizer_entries,
-                [entry.score for entry in optimizer_entries],
-                self.n_optimizer_examples_phase2 - 1,
-                rng=self.optimizer_pop._rng,
+            sampled_references = [[] for _ in selected_optimizers]
+        else:
+            sampled_references = list(
+                self.optimizer_examples_sampler.sample(
+                    self.optimizer_pop.entries(),
+                    selected_optimizers,
+                    self.n_optimizer_examples_phase2 - 1,
+                    rng=self.optimizer_pop._rng,
+                )
             )
-        )
+        if len(sampled_references) != len(selected_optimizers):
+            raise ValueError("optimizer example sampler must return one reference list per worker")
+        return [
+            self._build_worker_optimizer_examples(optimizer, references)
+            for optimizer, references in zip(
+                selected_optimizers,
+                sampled_references,
+                strict=True,
+            )
+        ]
 
     def _build_worker_optimizer_examples(
         self,
         optimizer: PopulationEntry,
-        shared_optimizer_examples: list[PopulationEntry],
+        sampled_optimizer_examples: list[PopulationEntry],
     ) -> list[PopulationEntry]:
         """Build the per-worker optimizer examples for `guidance_examples/`.
 
@@ -661,12 +657,11 @@ class Phase2BatchRunner:
         - `n_optimizer_examples_phase2 == 1`: include only the current worker's
           optimizer, which is also copied into `guidance/`.
         - `n_optimizer_examples_phase2 > 1`: include the current worker's
-          optimizer plus the shared `n-1` reference optimizers sampled for this
-          iteration.
+          optimizer plus up to `n-1` sampled reference optimizers.
         """
         if self.n_optimizer_examples_phase2 <= 0:
             return []
-        return [optimizer, *shared_optimizer_examples[: self.n_optimizer_examples_phase2 - 1]]
+        return [optimizer, *sampled_optimizer_examples[: self.n_optimizer_examples_phase2 - 1]]
 
     def _phase_log_prefix(self) -> str:
         if self.total_iterations is None:

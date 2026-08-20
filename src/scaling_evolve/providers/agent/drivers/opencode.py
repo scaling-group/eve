@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import json
+import os
 import re
+import shutil
 import subprocess
 import time
 from collections.abc import Mapping
@@ -19,7 +21,10 @@ from scaling_evolve.providers.agent.drivers._metadata import (
     compute_cost,
     resolve_token_pricing,
 )
-from scaling_evolve.providers.agent.drivers._subprocess import run_with_live_log
+from scaling_evolve.providers.agent.drivers._subprocess import (
+    run_with_live_log,
+    tracked_temporary_directory,
+)
 from scaling_evolve.providers.agent.drivers._transcript import archive_transcript
 from scaling_evolve.providers.agent.drivers._workspace import (
     changed_paths_from_tree,
@@ -46,6 +51,23 @@ _STEP_LIMIT_SUMMARY = re.compile(
     r"\bmaximum\b.{0,120}\bsteps\b.{0,120}\breached\b",
     flags=re.IGNORECASE | re.DOTALL,
 )
+
+
+def _project_opencode_auth(*, data_root: Path, source_env: Mapping[str, str]) -> None:
+    source_data_root = Path(
+        source_env.get("XDG_DATA_HOME")
+        or os.environ.get("XDG_DATA_HOME")
+        or Path(source_env.get("HOME") or Path.home()) / ".local" / "share"
+    )
+    source_auth = (source_data_root.expanduser() / "opencode" / "auth.json").resolve()
+    isolated_auth = data_root / "opencode" / "auth.json"
+    if isolated_auth.resolve() == source_auth:
+        return
+    if isolated_auth.exists() or isolated_auth.is_symlink():
+        isolated_auth.unlink()
+    if source_auth.is_file():
+        isolated_auth.parent.mkdir(parents=True, exist_ok=True)
+        isolated_auth.symlink_to(source_auth)
 
 
 @dataclass(frozen=True)
@@ -113,7 +135,7 @@ class OpenCodeSessionDriver(SessionDriver):
         )
 
     def workspace_config_dir(self, worktree_root: Path) -> Path:
-        """Return the task-local OpenCode config directory for a workspace."""
+        """Return the task-local Eve-owned OpenCode config source directory."""
 
         return self._transcript_root(worktree_root) / "config"
 
@@ -206,12 +228,18 @@ class OpenCodeSessionDriver(SessionDriver):
         transcript_root.mkdir(parents=True, exist_ok=True)
         driver_stdout_live_path = self._driver_stdout_live_path(worktree_root)
         try:
-            completed = self._run_command(
-                command=command,
-                cwd=worktree_root,
-                env=self._rollout_env(worktree_root),
-                stdout_live_path=driver_stdout_live_path,
-            )
+            # OpenCode owns this entire runtime tree. Keeping it outside the
+            # workspace makes cleanup independent of OpenCode's internal layout.
+            with tracked_temporary_directory(
+                prefix=".opencode-runtime-",
+                parent=self.run_root,
+            ) as home_root:
+                completed = self._run_command(
+                    command=command,
+                    cwd=worktree_root,
+                    env=self._rollout_env(worktree_root, home_root=home_root),
+                    stdout_live_path=driver_stdout_live_path,
+                )
         except subprocess.TimeoutExpired as error:
             raise RuntimeError(
                 self._format_timeout_failure(
@@ -395,15 +423,27 @@ class OpenCodeSessionDriver(SessionDriver):
         command.append(instruction.strip())
         return command
 
-    def _rollout_env(self, worktree_root: Path) -> dict[str, str]:
+    def _rollout_env(self, worktree_root: Path, *, home_root: Path) -> dict[str, str]:
         env = dict(self.provider_env)
+        env.setdefault(
+            "NPM_CONFIG_CACHE",
+            os.environ.get("NPM_CONFIG_CACHE", str(Path.home() / ".npm")),
+        )
+        shared_cache_root = env.get(
+            "XDG_CACHE_HOME",
+            os.environ.get("XDG_CACHE_HOME", str(Path.home() / ".cache")),
+        )
         runtime_root = self._transcript_root(worktree_root)
-        home_root = runtime_root / "home"
-        config_root = self.workspace_config_dir(worktree_root)
+        data_root = home_root / ".local" / "share"
+        config_source_root = self.workspace_config_dir(worktree_root)
+        config_root = home_root / ".config" / "opencode"
         config_path = config_root / "opencode.json"
         home_root.mkdir(parents=True, exist_ok=True)
-        config_root.mkdir(parents=True, exist_ok=True)
+        config_source_root.mkdir(parents=True, exist_ok=True)
+        shutil.copytree(config_source_root, config_root, symlinks=True, dirs_exist_ok=True)
         config_path.write_text("{}\n", encoding="utf-8")
+        if not self.provider_env:
+            _project_opencode_auth(data_root=data_root, source_env=env)
         env.update(
             {
                 "HOME": str(home_root),
@@ -412,9 +452,9 @@ class OpenCodeSessionDriver(SessionDriver):
                 "OPENCODE_DB": str(runtime_root / "opencode.db"),
                 "OPENCODE_DISABLE_EXTERNAL_SKILLS": "true",
                 "OPENCODE_DISABLE_PROJECT_CONFIG": "true",
-                "XDG_CACHE_HOME": str(home_root / ".cache"),
+                "XDG_CACHE_HOME": shared_cache_root,
                 "XDG_CONFIG_HOME": str(home_root / ".config"),
-                "XDG_DATA_HOME": str(home_root / ".local" / "share"),
+                "XDG_DATA_HOME": str(data_root),
                 "XDG_STATE_HOME": str(home_root / ".local" / "state"),
             }
         )

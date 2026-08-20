@@ -109,6 +109,12 @@ The driver config lives under the top-level `driver:` key.
 
 Supported backend names are `codex_exec`, `codex_tmux`, and `opencode`.
 
+## Authentication
+
+- Codex uses its native authentication by default; alternate providers may use `model_providers.*.env_key`.
+- OpenCode uses credentials saved by `opencode auth login` unless an explicit `model_providers.*.env_key` is configured.
+- Explicit environment credentials take precedence. Do not rely on undeclared ambient variables.
+
 ## Driver Options
 
 Common fields:

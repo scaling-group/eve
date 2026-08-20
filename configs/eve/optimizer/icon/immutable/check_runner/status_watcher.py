@@ -5,12 +5,12 @@ import argparse
 import json
 import subprocess
 import time
-from datetime import UTC, datetime
+from datetime import datetime
 from pathlib import Path
 
 
-def timestamp_utc() -> str:
-    return datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+def timestamp_local() -> str:
+    return datetime.now().astimezone().replace(microsecond=0).isoformat()
 
 
 def atomic_write_json(path: Path, payload: dict[str, object]) -> None:
@@ -50,7 +50,7 @@ def main() -> int:
     atomic_write_json(
         status_path,
         {
-            "updated_at": timestamp_utc(),
+            "updated_at": timestamp_local(),
             "pbs_job_id": args.job_id,
             "job_state": "Q",
             "exit_status": None,
@@ -86,7 +86,7 @@ def main() -> int:
         atomic_write_json(
             status_path,
             {
-                "updated_at": timestamp_utc(),
+                "updated_at": timestamp_local(),
                 "pbs_job_id": args.job_id,
                 "job_state": observed_state or "Q",
                 "exit_status": exit_status,

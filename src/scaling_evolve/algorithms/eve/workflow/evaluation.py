@@ -35,6 +35,7 @@ from scaling_evolve.algorithms.eve.workspace.immutable_renderers.static import (
     StaticRenderer,
 )
 from scaling_evolve.algorithms.eve.workspace.runtime_hooks import install_workspace_runtime_hooks
+from scaling_evolve.providers.agent.drivers._subprocess import tracked_process_tree
 from scaling_evolve.providers.agent.drivers.base import SessionSeed
 from scaling_evolve.providers.agent.evaluation import (
     load_completion_summary_verdict,
@@ -302,12 +303,22 @@ def _run_shell_step(*, step: Path, step_index: int, workspace_root: Path) -> Non
         workspace_root=workspace_root,
     )
     started_at = time.monotonic()
-    completed = subprocess.run(
+    process = subprocess.Popen(
         ["bash", str(step)],
         cwd=workspace_root,
-        capture_output=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
         text=True,
         env=env,
+        start_new_session=True,
+    )
+    with tracked_process_tree(process):
+        stdout, stderr = process.communicate()
+    completed = subprocess.CompletedProcess(
+        args=process.args,
+        returncode=process.returncode,
+        stdout=stdout,
+        stderr=stderr,
     )
     elapsed = time.monotonic() - started_at
     if completed.stdout:
